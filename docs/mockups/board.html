@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accountable mockup, board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+:root { --bg:#F0F4F5; --ink:#073B4C; --sea:#06D6A0; --gold:#FFC145; --coral:#F78C6B; --blue:#118AB2; --berry:#EF476F; --won:#04614A; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Instrument Sans", sans-serif; }
+.wrap { max-width:1360px; margin:0 auto; padding:28px 28px 56px; }
+.nav, .side { background:#fff; border-radius:16px; }
+.nav { display:flex; align-items:center; gap:4px; padding:10px 12px; }
+.brand { font-weight:700; padding:8px 12px; }
+.nav a, .side a { color:var(--ink); text-decoration:none; font-weight:600; font-size:14px; padding:8px 12px; border-radius:999px; }
+.nav a.on, .side a.on { background:var(--sea); }
+h1 { font-size:28px; line-height:1.2; margin:20px 0 0; font-weight:700; }
+h2 { font-size:16px; margin:0 0 12px; }
+h3 { font-size:13px; margin:12px 0 6px; }
+.panel { background:#fff; border-radius:16px; padding:16px 18px; }
+.k { margin:0; font-size:13px; font-weight:600; }
+.v, .mono, .meta, .when, .sums b, .facts b, .frow b { font-family:"JetBrains Mono", ui-monospace, monospace; }
+.v { margin:8px 0 0; font-size:22px; font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin-top:16px; }
+.chart-block { margin-top:12px; }
+.chart-block svg { width:100%; height:auto; display:block; }
+.note { margin:8px 0 0; font-size:13px; }
+.split, .lists { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.three { display:grid; grid-template-columns:1.25fr 1fr 0.9fr; gap:12px; }
+.strip { display:flex; justify-content:space-between; gap:16px; margin-top:16px; }
+.strip .v { font-size:18px; }
+.feed { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+.feed li { display:grid; grid-template-columns:64px 1fr; gap:10px; font-size:14px; }
+.when { font-size:12px; padding-top:2px; }
+.task { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-top:8px; }
+.task p { margin:2px 0 0; font-size:13px; }
+.pill { background:var(--berry); color:#fff; border-radius:999px; font-size:11px; font-weight:700; padding:3px 7px; }
+button { font-family:inherit; }
+.add, .done { background:var(--sea); color:var(--ink); border:0; border-radius:999px; font-weight:600; font-size:13px; padding:8px 12px; }
+.add { margin-top:auto; align-self:flex-start; }
+.board-head { display:flex; gap:36px; margin-top:16px; }
+.board { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:10px; margin-top:12px; align-items:stretch; }
+.col { background:#fff; border-radius:16px; padding:12px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+.col-name { display:flex; justify-content:space-between; align-items:center; }
+.chip { font-size:12px; font-weight:700; border-radius:999px; padding:4px 8px; }
+.sea { background:var(--sea); color:var(--ink); }
+.gold { background:var(--gold); color:var(--ink); }
+.coral { background:var(--coral); color:var(--ink); }
+.blue { background:var(--blue); color:#fff; }
+.won { background:var(--won); color:#fff; }
+.berry { background:var(--berry); color:#fff; }
+.count { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:12px; }
+.sums { display:flex; justify-content:space-between; gap:6px; margin:0; font-size:11px; }
+.sums b { font-size:11px; font-weight:600; }
+.card { background:var(--bg); border-radius:12px; padding:10px; }
+.card h3 { font-size:14px; margin:0; display:flex; justify-content:space-between; gap:6px; align-items:flex-start; }
+.card p { margin:4px 0 0; font-size:13px; }
+.meta { display:flex; flex-direction:column; align-items:flex-start; gap:2px; font-size:11px; }
+.meta span { white-space:nowrap; }
+.col.banded { padding:0; overflow:hidden; gap:0; }
+.band { padding:12px; display:flex; flex-direction:column; gap:2px; font-size:12px; }
+.band strong { font-size:14px; }
+.stack { padding:10px; display:flex; flex-direction:column; gap:8px; flex:1; }
+.funnel { display:flex; flex-direction:column; gap:10px; }
+.frow { display:grid; grid-template-columns:92px 1fr auto; gap:8px; align-items:center; font-size:13px; }
+.frow .bar { height:22px; border-radius:8px; display:block; }
+.frow b { font-size:12px; }
+.shell { display:grid; grid-template-columns:196px 1fr; gap:16px; align-items:start; }
+.side { padding:12px; display:flex; flex-direction:column; align-items:stretch; gap:4px; }
+.side a { display:block; }
+.rail-top { display:grid; grid-template-columns:0.8fr 1.2fr; gap:12px; }
+.hero .big { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:34px; font-weight:600; margin:8px 0 16px; }
+.facts { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.facts li { display:flex; justify-content:space-between; gap:12px; font-size:14px; }
+.axis { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:10px; fill:#073B4C; }
+.gap { height:28px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section><header class="nav"><span class="brand">Accountable</span><a class="">Dashboard</a><a class="">Organizations</a><a class="">Contacts</a><a class="">Deals</a><a class="on">Pipeline</a></header><h1>Pipeline</h1><div class="board-head panel">
+    <div><p class="k">Open pipeline</p><p class="v">$170,000.00</p></div>
+    <div><p class="k">Expected revenue</p><p class="v">$71,000.00</p></div>
+  </div><div class="board"><section class="col banded">
+    <div class="band sea">
+      <strong>New</strong>
+      <span>2 deals</span>
+      <span class="mono">$40,000.00</span>
+      <span>Expected $4,000.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Website refresh</h3>
+    <p>Brightpath Software</p>
+    <p class="meta"><span>$18,000.00</span><span>Dec 12</span></p>
+  </article><article class="card">
+    <h3>Staff training</h3>
+    <p>Lumen Clinic</p>
+    <p class="meta"><span>$22,000.00</span><span>Jan 8</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section><section class="col banded">
+    <div class="band gold">
+      <strong>Qualified</strong>
+      <span>1 deals</span>
+      <span class="mono">$30,000.00</span>
+      <span>Expected $9,000.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Fleet service</h3>
+    <p>Hart Freight</p>
+    <p class="meta"><span>$30,000.00</span><span>Dec 2</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section><section class="col banded">
+    <div class="band coral">
+      <strong>Proposal</strong>
+      <span>2 deals</span>
+      <span class="mono">$60,000.00</span>
+      <span>Expected $30,000.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Kitchen rollout<span class="pill">Late</span></h3>
+    <p>Northwind Bakery</p>
+    <p class="meta"><span>$24,000.00</span><span>Oct 30</span></p>
+  </article><article class="card">
+    <h3>Clinic portal</h3>
+    <p>Lumen Clinic</p>
+    <p class="meta"><span>$36,000.00</span><span>Dec 18</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section><section class="col banded">
+    <div class="band blue">
+      <strong>Negotiation</strong>
+      <span>1 deals</span>
+      <span class="mono">$40,000.00</span>
+      <span>Expected $28,000.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Annual retainer</h3>
+    <p>Fieldnote Studio</p>
+    <p class="meta"><span>$40,000.00</span><span>Nov 20</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section><section class="col banded">
+    <div class="band won">
+      <strong>Won</strong>
+      <span>3 deals</span>
+      <span class="mono">$24,500.00</span>
+      <span>Expected $24,500.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Spring campaign</h3>
+    <p>Mesa Solar</p>
+    <p class="meta"><span>$12,500.00</span><span>Nov 4</span></p>
+  </article><article class="card">
+    <h3>Logo system</h3>
+    <p>Oak &amp; Iron</p>
+    <p class="meta"><span>$8,000.00</span><span>Nov 9</span></p>
+  </article><article class="card">
+    <h3>Records audit</h3>
+    <p>Harbor Dental</p>
+    <p class="meta"><span>$4,000.00</span><span>Nov 11</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section><section class="col banded">
+    <div class="band berry">
+      <strong>Lost</strong>
+      <span>1 deals</span>
+      <span class="mono">$15,000.00</span>
+      <span>Expected $0.00</span>
+    </div>
+    <div class="stack">
+      <article class="card">
+    <h3>Yard lighting</h3>
+    <p>Hart Freight</p>
+    <p class="meta"><span>$15,000.00</span><span>Oct 2</span></p>
+  </article>
+      <button type="button" class="add">Add deal</button>
+    </div>
+  </section></div></section>
+  <div class="gap"></div>
+  <section><header class="nav"><span class="brand">Accountable</span><a class="on">Dashboard</a><a class="">Organizations</a><a class="">Contacts</a><a class="">Deals</a><a class="">Pipeline</a></header><h1>Dashboard</h1><div class="strip panel">
+    <div><p class="k">Open pipeline</p><p class="v">$170,000.00</p></div>
+    <div><p class="k">Expected revenue</p><p class="v">$71,000.00</p></div>
+    <div><p class="k">Won this month</p><p class="v">$24,500.00</p></div>
+    <div><p class="k">Deals won</p><p class="v">3</p></div>
+    <div><p class="k">Overdue</p><p class="v">2</p></div>
+  </div>
+  <div class="three">
+    <section class="panel chart-block"><h2>Revenue won</h2><svg viewBox="0 0 640 210" role="img" aria-label="Revenue won, June to November">
+  <line x1="48" y1="16" x2="616" y2="16" stroke="#CDD8DB"/>
+  <line x1="48" y1="86" x2="616" y2="86" stroke="#CDD8DB"/>
+  <line x1="48" y1="156" x2="616" y2="156" stroke="#CDD8DB"/>
+  <text x="0" y="20" class="axis">$32,000</text>
+  <text x="0" y="90" class="axis">$16,000</text>
+  <text x="0" y="160" class="axis">$0</text>
+  <polyline fill="none" stroke="#118AB2" stroke-width="3" points="48,76 162,156 275,19 389,100 502,59 616,49"/>
+  <g fill="#06D6A0" font-family="JetBrains Mono, ui-monospace, monospace" font-size="11">
+    <circle cx="48" cy="76" r="5"/><text x="48" y="68" text-anchor="middle" fill="#073B4C">2</text>
+    <circle cx="162" cy="156" r="5"/><text x="162" y="148" text-anchor="middle" fill="#073B4C">0</text>
+    <circle cx="275" cy="19" r="5"/><text x="275" y="14" text-anchor="middle" fill="#073B4C">3</text>
+    <circle cx="389" cy="100" r="5"/><text x="389" y="92" text-anchor="middle" fill="#073B4C">1</text>
+    <circle cx="502" cy="59" r="5"/><text x="502" y="51" text-anchor="middle" fill="#073B4C">2</text>
+    <circle cx="616" cy="49" r="5"/><text x="616" y="41" text-anchor="middle" fill="#073B4C">3</text>
+  </g>
+  <g fill="#073B4C" font-family="Instrument Sans, sans-serif" font-size="12" text-anchor="middle">
+    <text x="48" y="186">Jun</text><text x="162" y="186">Jul</text><text x="275" y="186">Aug</text>
+    <text x="389" y="186">Sep</text><text x="502" y="186">Oct</text><text x="616" y="186">Nov</text>
+  </g>
+</svg></section>
+    <section class="panel chart-block"><h2>Expected revenue</h2><svg viewBox="0 0 520 210" role="img" aria-label="Expected revenue by open stage">
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" fill="#073B4C" text-anchor="middle">
+    <rect x="48" y="128" width="72" height="28" rx="8" fill="#06D6A0"/><text x="84" y="120">$4,000</text>
+    <rect x="156" y="104" width="72" height="52" rx="8" fill="#FFC145"/><text x="192" y="96">$9,000</text>
+    <rect x="264" y="26" width="72" height="130" rx="8" fill="#F78C6B"/><text x="300" y="18">$30,000</text>
+    <rect x="372" y="34" width="72" height="122" rx="8" fill="#118AB2"/><text x="408" y="26">$28,000</text>
+  </g>
+  <line x1="36" y1="156" x2="470" y2="156" stroke="#CDD8DB"/>
+  <g fill="#073B4C" font-family="Instrument Sans, sans-serif" font-size="12" text-anchor="middle">
+    <text x="84" y="178">New</text><text x="192" y="178">Qualified</text>
+    <text x="300" y="178">Proposal</text><text x="408" y="178">Negotiation</text>
+  </g>
+</svg></section>
+    <section class="panel chart-block"><h2>Sales funnel</h2><div class="funnel" role="img" aria-label="Value sitting in each open stage">
+  <div class="frow"><span>New</span><span class="bar sea" style="width:67%"></span><b>$40,000.00</b></div>
+  <div class="frow"><span>Qualified</span><span class="bar gold" style="width:50%"></span><b>$30,000.00</b></div>
+  <div class="frow"><span>Proposal</span><span class="bar coral" style="width:100%"></span><b>$60,000.00</b></div>
+  <div class="frow"><span>Negotiation</span><span class="bar blue" style="width:67%"></span><b>$40,000.00</b></div>
+</div></section>
+  </div>
+  <div class="split">
+    <section class="panel"><h2>Recent activity</h2><ul class="feed">
+  <li><span class="when">Nov 13</span><span><strong>Moved from Proposal to Negotiation</strong> Annual retainer</span></li>
+  <li><span class="when">Nov 12</span><span><strong>Call</strong> Priya Shah, Lumen Clinic</span></li>
+  <li><span class="when">Nov 11</span><span><strong>Note</strong> Kitchen rollout is waiting on measurements</span></li>
+  <li><span class="when">Nov 11</span><span><strong>Moved from Negotiation to Won</strong> Records audit</span></li>
+  <li><span class="when">Nov 9</span><span><strong>Email</strong> Logo files sent to Oak &amp; Iron</span></li>
+</ul></section>
+    <section class="panel"><h2>Follow-ups</h2><div class="tasks">
+  <h3>Overdue</h3>
+  <div class="task"><div><span class="pill">Overdue</span> <strong>Call Priya about the portal</strong><p>Clinic portal · Nov 6</p></div><button type="button" class="done">Mark done</button></div>
+  <div class="task"><div><span class="pill">Overdue</span> <strong>Send the fit-out notes</strong><p>Kitchen rollout · Nov 10</p></div><button type="button" class="done">Mark done</button></div>
+  <h3>Upcoming</h3>
+  <div class="task"><div><strong>Review the retainer</strong><p>Annual retainer · Nov 18</p></div><button type="button" class="done">Mark done</button></div>
+  <div class="task"><div><strong>Confirm the fleet start</strong><p>Fleet service · Nov 20</p></div><button type="button" class="done">Mark done</button></div>
+</div></section>
+  </div></section>
+</main>
+</body>
+</html>

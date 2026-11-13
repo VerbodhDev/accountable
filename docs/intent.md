@@ -6,7 +6,7 @@ A small business keeps track of its customers and sales in spreadsheets, inboxes
 
 ## Proposed outcome
 
-Accountable is a business management system: a sales CRM that will grow into a full Business OS, including ERP. This first version, the MVP, is a complete sales CRM for one person, running on their own computer. Think of it as a private Salesforce that does the everyday CRM essentials really well. It should feel sharp, modern and professional, and be a pleasure to use.
+Accountable is a business management system: a sales CRM that will grow into a full Business OS, including ERP. This first version, the MVP, is a complete sales CRM for the owner of one small business, who sells to other companies. It runs on their own computer. Think of it as a private Salesforce that does the everyday CRM essentials really well. It should feel sharp, modern and professional, and be a pleasure to use.
 
 ### Five sections
 
@@ -37,13 +37,16 @@ The look follows Accountable's brand guidelines, which take priority over any ge
 
 ## Affected users and systems
 
-- One salesperson, using Accountable on their own computer every day. The rest of the sales team joins later.
+- The owner of a small business. They do the selling, they sell to other companies, and they use Accountable on their own computer every day. They are non-technical. The rest of the sales team joins later.
 - No other systems are involved yet.
 
 ## Constraints
 
 - The technology in `docs/TECH_STACK.md`.
 - It runs locally with one documented command that works on Mac, Linux and Windows, and needs no internet connection to use.
+- It listens only on this computer. Another device cannot open it, including a device on the same network.
+- There is no password. Anyone at the keyboard can see and change every record.
+- The records are the sample data and any practice records the owner adds. Real customer data is not required.
 - Every change is kept: it's still there after a browser refresh, and every time the app starts it shows every change made before.
 - One documented command resets the data to the sample data, to start again from scratch.
 - Not in the MVP: sign-in, user accounts or several users; a dark mode or a layout for phones; AI features; email, calendar or phone integrations; currencies other than US dollars; reports beyond the dashboard; tags or custom fields; changing the pipeline stages; importing or exporting data.
@@ -59,7 +62,9 @@ The look follows Accountable's brand guidelines, which take priority over any ge
 7. Every screen is sharp, modern and professional, and follows the brand. The dashboard is visually stunning, with a line chart, a bar chart and a visual of the pipeline.
 8. Before it's called done, someone has used it end to end in a real browser, the way a salesperson would: every section and every action above, each screen checked by eye, with no errors in the browser's console. Passing tests is necessary, but it isn't enough.
 
+These eight are the whole bar for done. The owner signs off. They use every section in a real browser, with no errors in the console, and they judge the look against the brand guidelines.
+
 ## Open questions
 
-- Sign-in, several people sharing the same data, and a record of who did what are for a later intent.
-- Making Accountable available to people beyond the computer it runs on is for later too.
+- Sign-in, a password, several people sharing the same data, and a record of who did what are for a later intent.
+- Making Accountable available to people beyond this computer is for later too.

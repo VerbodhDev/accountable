@@ -1,0 +1,19 @@
+{
+  "name": "accountable",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "test": "node scripts/test.mjs",
+    "seed": "node scripts/seed.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "fsevents@2.3.3": true
+  }
+}
