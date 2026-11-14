@@ -6,3 +6,7 @@ useDefault = true
 [[allowlists]]
 description = "The local .env file, which git ignores"
 paths = ['''(^|/)\.env$''']
+
+[[allowlists]]
+description = "Local Supabase CLI secrets, which git ignores"
+paths = ['''(^|/)supabase/\.temp/''']
