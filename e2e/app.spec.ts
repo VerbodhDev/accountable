@@ -174,7 +174,8 @@ test("log a follow-up and mark it done", async ({ page }) => {
 
 test("stage entry text", async ({ page }) => {
   await page.goto("/deals")
-  await page.getByRole("link", { name: "Yard signs" }).click()
+  await page.getByRole("link", { name: "Yard signs", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Yard signs", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Edit" }).click()
   await page.getByLabel("Stage").selectOption("Proposal")
   await page.getByRole("button", { name: "Save" }).click()

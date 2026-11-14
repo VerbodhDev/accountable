@@ -1,10 +1,14 @@
 import { spawnSync } from "node:child_process"
 
-function run(command) {
-  const result = spawnSync(command, { stdio: "inherit", shell: true })
-  if (result.status !== 0) process.exit(result.status ?? 1)
-}
+const commands = [
+  "uv run --group dev pytest",
+  "npm test -w frontend",
+  "npx playwright test",
+]
 
-run("uv run --group dev pytest")
-run("npm test -w frontend")
-run("npx playwright test")
+let code = 0
+for (const command of commands) {
+  const result = spawnSync(command, { stdio: "inherit", shell: true })
+  if (result.status !== 0 && code === 0) code = result.status ?? 1
+}
+if (code !== 0) process.exit(code)

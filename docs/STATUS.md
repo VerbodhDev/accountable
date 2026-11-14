@@ -4,7 +4,7 @@ CRM code sits in the accountable.crm package. The database module sits beside it
 
 Run npm run dev from the repo root. The site opens at http://127.0.0.1:5173. The API listens at http://127.0.0.1:8000. There is no password.
 
-Run npm test to run pytest, Vitest, and Playwright. Playwright uses the installed Google Chrome and its own database file.
+Run npm test to run pytest, Vitest, and Playwright. The command fails if any test fails. Playwright uses the installed Google Chrome and its own database file.
 
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 
