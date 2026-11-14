@@ -11,3 +11,5 @@ Run npm run seed to replace every row with the sample set. Seed does not ask fir
 A review on 2026-11-14 found one bug and no nits. On a contact timeline, delete named the contact for a deal activity and for a stage entry. The dialog now names the deal. A stage entry says that deal stays in its current stage. On the deal page the dialog still names that deal and its stage.
 
 On 2026-11-14 the docs were reorganized. docs/spec.md describes the product as it stands. The MVP intent and plan moved to docs/changes/mvp/. No application code changed.
+
+docs/STANDARDS.md holds the coding guidelines. AGENTS.md points to it. A review checks each change against it.
