@@ -12,6 +12,8 @@ A lefthook pre-commit hook formats the staged files, then runs ESLint, ruff chec
 
 GitHub Actions runs one job, named check, on every push to any branch. It installs gitleaks and scans the repo first. Then it installs Node and uv and runs npm run check, using the Google Chrome already on the runner. A failed check uploads the Playwright report. The workflow has no secrets.
 
+docs/IMPROVE.md is the Deploy step that runs after the review fixes and before the merge. AGENTS.md points to it.
+
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 
 A review on 2026-11-14 found one bug and no nits. On a contact timeline, delete named the contact for a deal activity and for a stage entry. The dialog now names the deal. A stage entry says that deal stays in its current stage. On the deal page the dialog still names that deal and its stage.

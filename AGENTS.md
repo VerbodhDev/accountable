@@ -15,6 +15,8 @@ Each change has a folder, `docs/changes/<branch name>/`, with its `intent.md` an
 
 Update `docs/STATUS.md` when you finish a piece of work. If the work adds or changes behavior, update `docs/spec.md` in the same change, so the spec still describes the whole product.
 
+At Deploy, follow `docs/IMPROVE.md` after the review fixes and before the merge.
+
 ## Testing
 
 Run `npm run check` from the repo root before calling work finished. Fix failures until it passes.
