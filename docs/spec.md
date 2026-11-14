@@ -216,24 +216,30 @@ The pipeline has the same top bar. A panel shows the open pipeline and the expec
 
 ## Look
 
-The brand guidelines win over any general design guidance. This version is light mode only. It is for a laptop or desktop screen. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page.
+The brand guidelines win over any general design guidance. Light mode is the default. The screen is for a laptop or a desktop. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page. The app does not follow the device's dark mode setting.
 
-| Use | Value |
-|---|---|
-| Page background | `#F0F4F5` |
-| Panels and cards | White, rounded, no outline |
-| Headings and body | Instrument Sans |
-| Money, dates, and counts | JetBrains Mono |
-| Accent | Instrument Serif is for a tagline or a quote. This version has neither, so it does not use that font |
-| Ink | Midnight `#073B4C` |
-| Primary action | Sea Green `#06D6A0` with Midnight text |
-| Destructive confirm | Raspberry `#EF476F` with white text |
+The top bar has one Dark mode control on every page. It is off in light mode and on in dark mode. This browser stores the choice on this computer. A reload keeps it. Any stored value other than dark is light mode.
 
-Sea Green and Marigold are too bright for small text. Small text is Midnight. Those colors are for fills, marks, and chart series.
+Colors live in one set of tokens. A component does not set its own page, panel, or ink color.
+
+| Use | Light | Dark |
+|---|---|---|
+| Page background | `#F0F4F5` | `#04232E` |
+| Panels, cards, dialogs, and the top bar | White, rounded, no outline | Black, rounded, no outline |
+| Headings and body | Instrument Sans | Instrument Sans |
+| Money, dates, and counts | JetBrains Mono | JetBrains Mono |
+| Accent | Instrument Serif is for a tagline or a quote. This version has neither, so it does not use that font | Same |
+| Ink | Midnight `#073B4C` | Sea Mist `#CDD8DB` |
+| Primary action | Sea Green `#06D6A0` with Midnight text | Same |
+| Destructive confirm | Raspberry `#EF476F` with white text | Same |
+
+Sea Green and Marigold are too bright for small text. Small text uses the ink token. Those colors are for fills, marks, and chart series. Text on a Sea Green, Marigold, or Coral fill stays Midnight in both modes.
+
+Charts, dialogs, empty states, field errors, and banners use the page, panel, and ink tokens, so they follow the mode.
 
 Do not put a border on one edge of a panel. Do not put a single line across the top of the page. Do not fill panels with gradients.
 
-The top bar is a white rounded panel. It shows the name Accountable and the five sections. The current section is a Sea Green pill with Midnight text.
+The top bar is a rounded panel, white in light mode and black in dark mode. It shows the name Accountable, the five sections, and the Dark mode control. The current section is a Sea Green pill with Midnight text.
 
 | Mark | Color | Text |
 |---|---|---|
@@ -358,13 +364,13 @@ The stack is the one in `docs/TECH_STACK.md`. The frontend is React, Vite, and T
 |---|---|
 | Backend | Stage change sets the usual probability. A hand-set probability survives until the stage changes. Expected revenue, late deals, dashboard totals, delete effects, and card position after a drop |
 | Frontend | Money format, the Late mark, and the split between overdue and upcoming follow-ups |
-| Browser | The dashboard opens with sample data. The owner can add, search, and sort. The contact filter works. A drag to another column stays after refresh. A new follow-up shows on the dashboard. Delete asks first |
+| Browser | The dashboard opens with sample data. The owner can add, search, and sort. The contact filter works. A drag to another column stays after refresh. A new follow-up shows on the dashboard. Delete asks first. Dark mode turns on from the top bar and stays on after a reload |
 
 Passing tests is required. It is not the whole bar. The owner uses every section in a real browser, with no console errors, and judges the look against the brand.
 
 ## Not in this version
 
-Sign-in, user accounts, several users, and a password. A record of who did what. Use from another device. Dark mode. A phone layout. AI features. Email, calendar, or phone integrations. A currency other than US dollars. Reports beyond the dashboard. Tags or custom fields. Editing the stage list. Import or export.
+Sign-in, user accounts, several users, and a password. A record of who did what. Use from another device. Following the device's dark mode setting. A phone layout. AI features. Email, calendar, or phone integrations. A currency other than US dollars. Reports beyond the dashboard. Tags or custom fields. Editing the stage list. Import or export.
 
 ## Requirement IDs
 
@@ -432,11 +438,11 @@ Each ID is one requirement of the product. The sections above state the same req
 | S58 | Overdue follow-ups are every undone one before today, oldest first. Upcoming ones are today through 7 days, soonest first. A later one stays on the record only |
 | S59 | Each task shows the description, the contact or deal, the date, and Mark done. Overdue tasks show an Overdue mark |
 | S60 | The dashboard layout is the figures mockup. The other two mockups are not the design |
-| S61 | Light mode only, for a laptop or desktop. A narrow window scrolls. It does not become a phone page |
-| S62 | Page background `#F0F4F5`, white rounded panels with no outline, Instrument Sans, JetBrains Mono for money, dates, and counts. No Instrument Serif |
-| S63 | Ink is Midnight. A primary action is Sea Green with Midnight text. A destructive confirm is Raspberry with white text |
-| S64 | Sea Green and Marigold are not used for small text. No border on one edge. No line across the top. No gradient fills |
-| S65 | The top bar is a white rounded panel with Accountable and the five sections. The current section is a Sea Green pill with Midnight text |
+| S61 | Light mode is the default. A Dark mode control on the top bar is on every page. The browser remembers the choice. The app does not follow the device setting. A narrow window scrolls. It does not become a phone page |
+| S62 | Light page background `#F0F4F5` with white panels. Dark page background `#04232E` with black panels. Panels are rounded and have no outline. Instrument Sans. JetBrains Mono for money, dates, and counts. No Instrument Serif |
+| S63 | Light ink is Midnight. Dark ink is Sea Mist. A primary action is Sea Green with Midnight text in both modes. A destructive confirm is Raspberry with white text |
+| S64 | Sea Green and Marigold are not used for small text. Text on Sea Green, Marigold, or Coral stays Midnight in both modes. No border on one edge. No line across the top. No gradient fills |
+| S65 | The top bar is a rounded panel, white in light mode and black in dark mode. It shows Accountable, the five sections, and the Dark mode control. The current section is a Sea Green pill with Midnight text |
 | S66 | Lead is Cerulean with white text. Qualified is Marigold with Midnight text. Customer is Sea Green with Midnight text. Late and Overdue are Raspberry with white text |
 | S67 | Money always shows as US dollars, for example $1,250.00 |
 | S68 | Labels are short. The tone is plain business English. There are no exclamation marks |
@@ -456,5 +462,5 @@ Each ID is one requirement of the product. The sections above state the same req
 | S82 | Tables use TanStack Table. Charts use Recharts. The board uses dnd-kit. Those jobs are not hand-rolled |
 | S83 | The stack is `docs/TECH_STACK.md`. React, Vite, and TypeScript in `frontend/`. FastAPI on Python 3.12 with uv. `pyproject.toml` and `uv.lock` sit at the repo root |
 | S84 | `npm test` runs Vitest, pytest, and Playwright with the installed Google Chrome. Playwright starts the app. Any failure fails the command |
-| S85 | Sign-in, accounts, a password, several users, an audit trail, other devices, dark mode, a phone layout, AI, mail, calendar, phone integration, other currencies, extra reports, tags, custom fields, stage editing, import, and export are not built |
+| S85 | Sign-in, accounts, a password, several users, an audit trail, other devices, the device's own dark mode setting, a phone layout, AI, mail, calendar, phone integration, other currencies, extra reports, tags, custom fields, stage editing, import, and export are not built |
 | S86 | The pipeline layout is the figures mockup: a totals panel, a stage chip on each column, and Add deal |
