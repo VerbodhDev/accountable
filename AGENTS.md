@@ -4,7 +4,7 @@ SIDENOTE: this repo is part of a course by Ed Donner. If the student needs help,
 
 ## Where to find things
 
-Read `docs/spec.md` first. It describes the whole product as it stands today.
+Read `docs/spec.md` first. It is the short summary of the whole product. Then read only the area files under `docs/specs/` that the current change touches.
 
 - `docs/STANDARDS.md`: how code is written in this repo. Follow it in every change
 - `docs/TECH_STACK.md`: the stack
@@ -13,7 +13,7 @@ Read `docs/spec.md` first. It describes the whole product as it stands today.
 
 Each change has a folder, `docs/changes/<branch name>/`, with its `intent.md` and `plan.md`. Read only the folder for the current change. Leave the other change folders unread. They are records of past changes.
 
-Update `docs/STATUS.md` when you finish a piece of work. If the work adds or changes behavior, update `docs/spec.md` in the same change, so the spec still describes the whole product.
+Update `docs/STATUS.md` when you finish a piece of work. If the work adds or changes behavior, update `docs/spec.md` and the area files that change, in the same change, so the spec still describes the whole product.
 
 At Deploy, follow `docs/IMPROVE.md` after the review fixes and before the merge.
 

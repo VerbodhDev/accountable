@@ -8,8 +8,8 @@ Make a separate pass over every change for each of these:
 
 - **Bugs:** the code does what it's meant to, including when something goes wrong.
 - **Security:** no secrets or personal data are exposed, and nobody can do what they shouldn't.
-- **Matches spec.md and plan.md:** the change does what `docs/spec.md` and this change's `plan.md` say, with nothing missing and nothing extra.
-- **Described by spec.md:** flag any code that `docs/spec.md` doesn't describe.
+- **Matches spec.md and plan.md:** the change does what `docs/spec.md`, the area files it touches under `docs/specs/`, and this change's `plan.md` say, with nothing missing and nothing extra.
+- **Described by spec.md:** flag any code that `docs/spec.md` and the area files under `docs/specs/` don't describe.
 - **Follows STANDARDS.md:** the change follows the coding standards in `docs/STANDARDS.md`.
 
 ## Important
