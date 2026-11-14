@@ -218,7 +218,7 @@ The pipeline has the same top bar. A panel shows the open pipeline and the expec
 
 The brand guidelines win over any general design guidance. Light mode is the default. The screen is for a laptop or a desktop. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page. The app does not follow the device's dark mode setting.
 
-The top bar has one Dark mode control on every page. It is off in light mode and on in dark mode. This browser stores the choice on this computer. A reload keeps it. Any stored value other than dark is light mode.
+The top bar has one theme control on every page. In light mode it says Dark mode and it is off. In dark mode it says Light mode and it is on. This browser stores the choice on this computer. A reload keeps it. Any stored value other than dark is light mode.
 
 Colors live in one set of tokens. A component does not set its own page, panel, or ink color.
 
@@ -239,7 +239,7 @@ Charts, dialogs, empty states, field errors, and banners use the page, panel, an
 
 Do not put a border on one edge of a panel. Do not put a single line across the top of the page. Do not fill panels with gradients.
 
-The top bar is a rounded panel, white in light mode and black in dark mode. It shows the name Accountable, the five sections, and the Dark mode control. The current section is a Sea Green pill with Midnight text.
+The top bar is a rounded panel, white in light mode and black in dark mode. It shows the name Accountable, the five sections, and the theme control. The control says Dark mode in light mode and Light mode in dark mode. The current section is a Sea Green pill with Midnight text.
 
 | Mark | Color | Text |
 |---|---|---|
@@ -364,7 +364,7 @@ The stack is the one in `docs/TECH_STACK.md`. The frontend is React, Vite, and T
 |---|---|
 | Backend | Stage change sets the usual probability. A hand-set probability survives until the stage changes. Expected revenue, late deals, dashboard totals, delete effects, and card position after a drop |
 | Frontend | Money format, the Late mark, and the split between overdue and upcoming follow-ups |
-| Browser | The dashboard opens with sample data. The owner can add, search, and sort. The contact filter works. A drag to another column stays after refresh. A new follow-up shows on the dashboard. Delete asks first. Dark mode turns on from the top bar and stays on after a reload |
+| Browser | The dashboard opens with sample data. The owner can add, search, and sort. The contact filter works. A drag to another column stays after refresh. A new follow-up shows on the dashboard. Delete asks first. Dark mode turns on from the top bar, the control then says Light mode, and the choice stays on after a reload |
 
 Passing tests is required. It is not the whole bar. The owner uses every section in a real browser, with no console errors, and judges the look against the brand.
 
@@ -438,11 +438,11 @@ Each ID is one requirement of the product. The sections above state the same req
 | S58 | Overdue follow-ups are every undone one before today, oldest first. Upcoming ones are today through 7 days, soonest first. A later one stays on the record only |
 | S59 | Each task shows the description, the contact or deal, the date, and Mark done. Overdue tasks show an Overdue mark |
 | S60 | The dashboard layout is the figures mockup. The other two mockups are not the design |
-| S61 | Light mode is the default. A Dark mode control on the top bar is on every page. The browser remembers the choice. The app does not follow the device setting. A narrow window scrolls. It does not become a phone page |
+| S61 | Light mode is the default. A theme control on the top bar is on every page. It says Dark mode in light mode and Light mode in dark mode. The browser remembers the choice. The app does not follow the device setting. A narrow window scrolls. It does not become a phone page |
 | S62 | Light page background `#F0F4F5` with white panels. Dark page background `#04232E` with black panels. Panels are rounded and have no outline. Instrument Sans. JetBrains Mono for money, dates, and counts. No Instrument Serif |
 | S63 | Light ink is Midnight. Dark ink is Sea Mist. A primary action is Sea Green with Midnight text in both modes. A destructive confirm is Raspberry with white text |
 | S64 | Sea Green and Marigold are not used for small text. Text on Sea Green, Marigold, or Coral stays Midnight in both modes. No border on one edge. No line across the top. No gradient fills |
-| S65 | The top bar is a rounded panel, white in light mode and black in dark mode. It shows Accountable, the five sections, and the Dark mode control. The current section is a Sea Green pill with Midnight text |
+| S65 | The top bar is a rounded panel, white in light mode and black in dark mode. It shows Accountable, the five sections, and the theme control. The control says Dark mode in light mode and Light mode in dark mode. The current section is a Sea Green pill with Midnight text |
 | S66 | Lead is Cerulean with white text. Qualified is Marigold with Midnight text. Customer is Sea Green with Midnight text. Late and Overdue are Raspberry with white text |
 | S67 | Money always shows as US dollars, for example $1,250.00 |
 | S68 | Labels are short. The tone is plain business English. There are no exclamation marks |
