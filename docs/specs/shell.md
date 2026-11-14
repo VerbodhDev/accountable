@@ -8,9 +8,11 @@ The pipeline has the same top bar. A panel shows the open pipeline and the expec
 
 ## Look
 
-The brand guidelines win over any general design guidance. Light mode is the default. The screen is for a laptop or a desktop. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page. The app does not follow the device's dark mode setting.
+The brand guidelines win over any general design guidance. Light mode is the default. The screen is for a laptop or a desktop. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page.
 
-The top bar has one theme control on every page. In light mode it says Dark mode and it is off. In dark mode it says Light mode and it is on. This browser stores the choice on this computer. A reload keeps it. Any stored value other than dark is light mode.
+The top bar is on every page. It has a search box and a menu under the signed-in person's initials. The menu holds Light, Dark, System, and Sign out. There is no separate theme button. This browser stores the theme choice. A reload keeps it. The choice does not follow the person to another computer. System follows that device's setting. A stored value of dark is dark mode. A stored value of system follows the device. Any other stored value is light mode.
+
+The search box finds an organization, a contact, or a deal by part of its name. Search runs as the person types. It ignores case. It works the same on SQLite and Postgres. A result shows the name and the kind of record. Choosing a result opens that record. No matches says there are no matches. An empty box shows no results. The search boxes on the tables stay, and they still match the fields in docs/specs/lists.md.
 
 Colors live in one set of tokens. A component does not set its own page, panel, or ink color.
 
@@ -31,7 +33,7 @@ Charts, dialogs, empty states, field errors, and banners use the page, panel, an
 
 Do not put a border on one edge of a panel. Do not put a single line across the top of the page. Do not fill panels with gradients.
 
-The top bar is a rounded panel, white in light mode and black in dark mode. It shows the name Accountable, the five sections, and the theme control. The control says Dark mode in light mode and Light mode in dark mode. The current section is a Sea Green pill with Midnight text.
+The top bar is a rounded panel, white in light mode and black in dark mode. It shows the name Accountable, the five sections, the search box, and the initials. The current section is a Sea Green pill with Midnight text. The initials open a menu panel. That panel is rounded and has no outline. It uses the panel and ink tokens. Its labels are Light, Dark, System, and Sign out.
 
 | Mark | Color | Text |
 |---|---|---|
@@ -68,6 +70,8 @@ Labels are short. The tone is plain business English. There are no exclamation m
 | Deals | `/deals` | The deals table, with Late on late rows |
 | Deal | `/deals/:id` | The deal, linked records, the timeline, and the log form |
 | Pipeline | `/pipeline` | The six columns |
+
+Signed out, every route shows the sign-in screen instead of that content.
 
 Add and edit open as dialogs. Delete opens a confirm dialog. The log form sits on the contact page and the deal page.
 

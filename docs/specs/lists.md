@@ -9,7 +9,7 @@ Organizations, contacts, and deals each have a table. Each table has:
 - A way to add a record.
 - Edit and delete on each row.
 
-Search matches these fields:
+This is the search box on the table. The search box in the top bar is separate, and it is described in docs/specs/shell.md. Table search matches these fields:
 
 | Table | Fields |
 |---|---|
@@ -37,8 +37,8 @@ Delete asks first. The dialog says what will happen to linked records. The owner
 
 | Page | What it shows |
 |---|---|
-| Organization | Its fields, its contacts, and its deals |
-| Contact | Its fields, its organization, the deals where it is the main contact, and its timeline |
-| Deal | Its fields, its organization, its main contact, a late mark when it is late, and its timeline |
+| Organization | Its fields, who added it, its contacts, and its deals |
+| Contact | Its fields, who added it, its organization, the deals where it is the main contact, and its timeline |
+| Deal | Its fields, who added it, its organization, its main contact, a late mark when it is late, and its timeline |
 
 From an organization page the owner can add a contact or a deal already tied to that organization.

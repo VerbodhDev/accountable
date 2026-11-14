@@ -9,6 +9,8 @@ Something that happened, or a follow-up, on one contact or one deal. It relates 
 | When it happened | Yes | Defaults to now |
 | Follow-up date | No | |
 | Done | Yes | Defaults to not done |
+| Added by | Yes | The person who logged it. The timeline and recent activity show this name |
+| Last changed by | Yes | The person who last changed it. The screen does not show this name |
 
 The owner marks a follow-up done. The activity stays in the timeline. It leaves the dashboard task list.
 

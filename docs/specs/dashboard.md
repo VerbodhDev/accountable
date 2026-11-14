@@ -28,7 +28,7 @@ Colors follow the stage colors. Chart fills are flat. There is no gradient.
 
 ### Lists
 
-Recent activity is the 10 newest activities and stage entries. Each row names the contact or the deal.
+Recent activity is the 10 newest activities and stage entries. Each row names the contact or the deal. An activity row also names who added it.
 
 Follow-ups are tasks until the owner marks them done.
 

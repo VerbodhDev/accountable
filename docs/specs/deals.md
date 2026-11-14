@@ -12,6 +12,8 @@ A potential sale.
 | Probability | Yes | A whole number from 0 to 100 |
 | Close date | No | The expected date while the deal is open. The actual date when the deal is Won or Lost |
 | Position | Yes | The card's place in its column. The owner does not type this |
+| Added by | Yes | The person who added it. The deal page shows this name |
+| Last changed by | Yes | The person who last changed it. The page does not show this name |
 
 A new deal starts at New, unless the owner adds it from a pipeline column. Then it starts at that column's stage.
 
@@ -34,4 +36,4 @@ The owner can move a deal to another organization. If the main contact is not at
 
 ### Stage entry
 
-When a deal moves to another stage, the app adds an entry on its own. The text is "Moved from Proposal to Negotiation", with the real stage names. The owner did not type it. It appears in that deal's timeline and in recent activity on the dashboard. The owner can delete it. The owner cannot edit its text.
+When a deal moves to another stage, the app adds an entry on its own. The text is "Moved from Proposal to Negotiation", with the real stage names. The owner did not type it. It appears in that deal's timeline and in recent activity on the dashboard. The owner can delete it. The owner cannot edit its text. A stage entry does not record who moved the deal.

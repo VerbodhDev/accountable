@@ -8,22 +8,21 @@ A small business keeps track of its customers and sales in spreadsheets, inboxes
 
 ## What Accountable is
 
-Accountable is a business management system. It is a sales CRM that will grow into a full Business OS, including ERP. Today it is a complete sales CRM for the owner of one small business. The owner sells to other companies. It runs on that one computer.
+Accountable is a business management system. It is a sales CRM that will grow into a full Business OS, including ERP. A small team uses it to sell to other companies. The people sign in and work on the same organizations, contacts, and deals.
 
-The owner can see companies, people, deals, the pipeline, and what to do next. The app keeps every change. A restart shows the same records.
+The backend runs on one computer. The built frontend is served from a temporary S3 bucket with public access blocked. A browser on that computer loads the frontend and calls the local backend. The app keeps every change. A restart shows the same records.
 
 ## Users and access
 
-One person uses the app. That person is the owner. The owner is non-technical. A sales team, sign-in, and a password come later.
+Everyone who is signed in can see and change every record. There are no roles. People sign in with an email and a password. There is no sign-up page. The detail is in docs/specs/sign-in.md.
 
-The app listens only on this computer. Another device cannot open it. There is no password. Anyone at the keyboard can see and change every record.
-
-The records are sample data plus practice records the owner adds. Real customer data is not required.
+The records are the sample set plus the records the team adds. Real customer data is not required.
 
 ## Index
 
 | Area | File |
 |---|---|
+| Sign-in | docs/specs/sign-in.md |
 | Organizations | docs/specs/organizations.md |
 | Contacts | docs/specs/contacts.md |
 | Deals | docs/specs/deals.md |
