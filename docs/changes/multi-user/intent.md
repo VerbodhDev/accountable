@@ -6,7 +6,7 @@ Accountable runs on one computer for one person. A team can't share it, nobody s
 
 ## Proposed outcome
 
-A small team shares one Accountable on the web. Everyone signs in and works on the same organizations, contacts and deals, and each record shows who added it. A search box in the top bar finds an organization, a contact or a deal by part of its name. The search box on each table stays, and it still matches the fields it matches today. A menu under your initials holds the theme, light, dark or system, and signing out. This browser remembers the theme choice.
+A small team shares one Accountable. The frontend is served from a temporary private S3 bucket. The backend runs on this computer. Everyone signs in and works on the same organizations, contacts and deals, and each record shows who added it. A search box in the top bar finds an organization, a contact or a deal by part of its name. The search box on each table stays, and it still matches the fields it matches today. A menu under your initials holds the theme, light, dark or system, and signing out. This browser remembers the theme choice.
 
 ## Constraints
 
@@ -19,7 +19,7 @@ A small team shares one Accountable on the web. Everyone signs in and works on t
 - Search from the top bar ignores case, matches part of a name, and works the same on SQLite and Postgres. It finds organizations, contacts and deals. Each table keeps its own search.
 - The theme moves from the dark mode button into the menu. The choice is light, dark or system, and this browser remembers it. System follows that device's setting. The choice does not follow the person to another computer.
 - The shared app needs an internet connection, for Supabase. `npm run dev` and the tests still run without one.
-- The built frontend deploys to a temporary S3 bucket with public access blocked. The API runs on a separate host. That host is named before Deploy. The Supabase settings are environment variables on the API host. They are not written into the bucket or the repo. This change does not deploy to Render.
+- The built frontend deploys to a temporary S3 bucket with public access blocked. The backend runs on this computer only. A browser on this computer loads the frontend from that bucket and calls the local backend. The Supabase settings stay in .env on this computer. They are not written into the bucket or the repo. This change does not deploy to Render.
 - Every unit test, old and new, runs in under a second on this computer, because CI runs on a much slower machine.
 - No new dependencies unless the plan makes the case for one.
 
@@ -36,4 +36,4 @@ A small team shares one Accountable on the web. Everyone signs in and works on t
 3. Every record and activity shows who added it.
 4. The top-bar search finds an organization, a contact and a deal by part of a name, in any case. The search on each table still works as it does today.
 5. The menu's theme choice is remembered in this browser, and System follows the device's setting.
-6. On this computer, a production-shaped run signs in against Supabase. The built frontend is also deployed to a temporary S3 bucket with public access blocked. The API host is named before Deploy.
+6. The backend runs on this computer and signs in against Supabase. The built frontend is on a temporary S3 bucket with public access blocked. From this computer, the site loads from that bucket and calls the local backend.
