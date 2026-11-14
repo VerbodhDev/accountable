@@ -12,7 +12,7 @@ A lefthook pre-commit hook formats the staged files, then runs ESLint, ruff chec
 
 Two project subagents live in .grok/agents/. reviewer reads a branch against docs/REVIEW.md and reports Important findings and at most five nits. Its shell can only run commands that read. ui-check opens the running app with the Playwright MCP server, checks each page against the brand skill and docs/spec.md, and saves screenshots in .playwright-mcp/. It does not change code. Both run on grok-4.6. A new session loads them. On 14 Nov 2026 reviewer checked commit f94f789 and ui-check checked the dashboard and the pipeline.
 
-GitHub Actions runs one job, named check, on every push to any branch. It installs gitleaks and scans the repo first. Then it installs Node and uv and runs npm run check, using the Google Chrome already on the runner. A failed check uploads the Playwright report. The workflow has no secrets.
+GitHub Actions runs one job, named check, on every push to any branch. It installs gitleaks and scans the repo first. Then it installs Node and uv and runs npm run check:quick. The end-to-end tests stay in npm run check on the computer. The workflow has no secrets.
 
 docs/IMPROVE.md is the Deploy step that runs after the review fixes and before the merge. AGENTS.md points to it.
 

@@ -1,4 +1,5 @@
-# On every push to any branch: look for secrets first, then run npm run check.
+# On every push to any branch: look for secrets first, then run npm run check:quick.
+# The end-to-end tests stay on the computer, in npm run check.
 # This workflow uses no secrets.
 
 name: CI
@@ -51,15 +52,5 @@ jobs:
       - name: Install the npm packages
         run: npm ci
 
-      # The end-to-end tests use the Google Chrome already on GitHub's Ubuntu runner.
-      - name: npm run check
-        id: check
-        run: npm run check
-
-      - name: Upload the Playwright report
-        if: failure() && steps.check.outcome == 'failure'
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: playwright-report/
-          if-no-files-found: ignore
+      - name: npm run check:quick
+        run: npm run check:quick

@@ -27,7 +27,7 @@ Run `npm run check` from the repo root before calling work finished. Fix failure
 
 A lefthook pre-commit hook formats the staged files, then runs lint, types, and gitleaks. It skips the tests. Grok runs `npm run check:quick` when a turn ends. A failure is sent back once, and the next stop is allowed. Edits to .env are blocked.
 
-GitHub Actions runs the job named check on every push. It scans for secrets first, then runs `npm run check`. A failed check uploads the Playwright report.
+GitHub Actions runs the job named check on every push. It scans for secrets first, then runs `npm run check:quick`. The end-to-end tests stay in `npm run check` on the computer.
 
 `npm run format` fixes Prettier and ruff formatting.
 
