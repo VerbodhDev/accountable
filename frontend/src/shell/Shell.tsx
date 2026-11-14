@@ -32,7 +32,7 @@ export function Shell() {
           aria-pressed={theme === "dark"}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
-          Dark mode
+          {theme === "dark" ? "Light mode" : "Dark mode"}
         </button>
       </header>
       <Outlet />

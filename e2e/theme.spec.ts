@@ -33,15 +33,20 @@ test("dark mode turns on and stays on after a reload", async ({ page }) => {
   await page.goto("/")
   await toggle.click()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await expect(toggle).toHaveAttribute("aria-pressed", "true")
+  const back = page.getByRole("button", { name: "Light mode" })
+  await expect(back).toHaveAttribute("aria-pressed", "true")
   await shot(page, "dashboard-dark")
   await page.goto("/pipeline")
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await expect(page.getByRole("button", { name: "Light mode" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
   await shot(page, "pipeline-dark")
   await page.goto("/")
   await page.reload()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await expect(page.getByRole("button", { name: "Dark mode" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Light mode" })).toHaveAttribute(
     "aria-pressed",
     "true",
   )

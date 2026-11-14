@@ -14,7 +14,7 @@ GitHub Actions runs one job, named check, on every push to any branch. It instal
 
 docs/IMPROVE.md is the Deploy step that runs after the review fixes and before the merge. AGENTS.md points to it.
 
-Dark mode is on the top bar of every page. Light mode is the default. The browser remembers the choice. The page background is #04232E in dark mode and panels are black. Ink is Sea Mist. Stage colors stay the same. The app does not follow the device setting.
+Dark mode is on the top bar of every page. The button says Dark mode in light mode and Light mode in dark mode. Light mode is the default. The browser remembers the choice. The page background is #04232E in dark mode and panels are black. Ink is Sea Mist. Stage colors stay the same. The app does not follow the device setting.
 
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 

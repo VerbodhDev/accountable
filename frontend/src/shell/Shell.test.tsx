@@ -43,10 +43,10 @@ test("the dark mode control turns the page dark and then light", async () => {
   expect(toggle).toHaveProperty("ariaPressed", "false")
   await user.click(toggle)
   expect(document.documentElement.dataset.theme).toBe("dark")
-  expect(toggle).toHaveProperty("ariaPressed", "true")
-  await user.click(toggle)
+  expect(screen.getByRole("button", { name: "Light mode" })).toHaveProperty("ariaPressed", "true")
+  await user.click(screen.getByRole("button", { name: "Light mode" }))
   expect(document.documentElement.dataset.theme).toBe("light")
-  expect(toggle).toHaveProperty("ariaPressed", "false")
+  expect(screen.getByRole("button", { name: "Dark mode" })).toHaveProperty("ariaPressed", "false")
 })
 
 test("a page heading can carry actions", () => {
