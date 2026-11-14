@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Accountable</title>
     <link rel="icon" href="/favicon.svg" />
+    <script>
+      try {
+        if (localStorage.getItem("accountable-theme") === "dark") {
+          document.documentElement.dataset.theme = "dark"
+        }
+      } catch {
+        // Storage can be blocked. Light mode stays the default.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

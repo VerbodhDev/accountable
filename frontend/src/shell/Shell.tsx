@@ -1,5 +1,6 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { NavLink, Outlet } from "react-router-dom"
+import { applyTheme, readTheme, type Theme } from "./theme"
 
 const LINKS = [
   { to: "/", label: "Dashboard", end: true },
@@ -10,6 +11,12 @@ const LINKS = [
 ]
 
 export function Shell() {
+  const [theme, setTheme] = useState<Theme>(readTheme)
+
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
+
   return (
     <div className="wrap">
       <header className="nav">
@@ -19,6 +26,14 @@ export function Shell() {
             {link.label}
           </NavLink>
         ))}
+        <button
+          type="button"
+          className="quiet theme-toggle"
+          aria-pressed={theme === "dark"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          Dark mode
+        </button>
       </header>
       <Outlet />
     </div>

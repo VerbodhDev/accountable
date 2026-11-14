@@ -15,11 +15,21 @@ import type { MonthPoint, OpenStage } from "../lib/api"
 import { money } from "../lib/money"
 import { STAGE_COLOR } from "./stages"
 
-const axis = { fill: "#073B4C", fontSize: 12, fontFamily: "Instrument Sans, sans-serif" }
+const axis = { fill: "var(--ink)", fontSize: 12, fontFamily: "Instrument Sans, sans-serif" }
 const mono = {
-  fill: "#073B4C",
+  fill: "var(--ink)",
   fontSize: 11,
   fontFamily: "JetBrains Mono, ui-monospace, monospace",
+}
+const tooltip = {
+  contentStyle: {
+    background: "var(--panel)",
+    border: "none",
+    borderRadius: 12,
+    color: "var(--ink)",
+  },
+  itemStyle: { color: "var(--ink)" },
+  labelStyle: { color: "var(--ink)" },
 }
 
 export function RevenueChart({ months }: { months: MonthPoint[] }) {
@@ -29,7 +39,7 @@ export function RevenueChart({ months }: { months: MonthPoint[] }) {
       <div className="chart-box">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={months} margin={{ top: 24, right: 12, left: 8, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="#CDD8DB" />
+            <CartesianGrid vertical={false} stroke="var(--line)" />
             <XAxis dataKey="label" tick={axis} axisLine={false} tickLine={false} />
             <YAxis
               tick={mono}
@@ -38,20 +48,20 @@ export function RevenueChart({ months }: { months: MonthPoint[] }) {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip formatter={(value) => money(Number(value))} />
+            <Tooltip formatter={(value) => money(Number(value))} {...tooltip} />
             <Line
               type="monotone"
               dataKey="cents"
               name="Revenue"
-              stroke="#118AB2"
+              stroke="var(--blue)"
               strokeWidth={3}
-              dot={{ r: 5, fill: "#06D6A0", stroke: "none" }}
+              dot={{ r: 5, fill: "var(--sea)", stroke: "none" }}
               isAnimationActive={false}
             >
               <LabelList
                 dataKey="count"
                 position="top"
-                fill="#073B4C"
+                fill="var(--ink)"
                 fontSize={11}
                 fontFamily="JetBrains Mono, ui-monospace, monospace"
               />
@@ -71,7 +81,7 @@ export function ExpectedChart({ stages }: { stages: OpenStage[] }) {
       <div className="chart-box">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stages} margin={{ top: 12, right: 8, left: 8, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="#CDD8DB" />
+            <CartesianGrid vertical={false} stroke="var(--line)" />
             <XAxis dataKey="stage" tick={axis} axisLine={false} tickLine={false} />
             <YAxis
               tick={mono}
@@ -80,7 +90,7 @@ export function ExpectedChart({ stages }: { stages: OpenStage[] }) {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip formatter={(value) => money(Number(value))} />
+            <Tooltip formatter={(value) => money(Number(value))} {...tooltip} />
             <Bar dataKey="expected_cents" name="Expected" isAnimationActive={false} radius={8}>
               {stages.map((stage) => (
                 <Cell key={stage.stage} fill={STAGE_COLOR[stage.stage]} />
@@ -114,7 +124,7 @@ export function FunnelChart({ stages }: { stages: OpenStage[] }) {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip formatter={(value) => money(Number(value))} />
+            <Tooltip formatter={(value) => money(Number(value))} {...tooltip} />
             <Bar dataKey="value_cents" name="Value" isAnimationActive={false} radius={8}>
               {stages.map((stage) => (
                 <Cell key={stage.stage} fill={STAGE_COLOR[stage.stage]} />

@@ -10,7 +10,10 @@ import { OrganizationPage } from "./crm/pages/OrganizationPage"
 import { OrganizationsPage } from "./crm/pages/OrganizationsPage"
 import { PipelinePage } from "./crm/pages/PipelinePage"
 import { Missing, Shell } from "./shell/Shell"
+import { applyTheme, readTheme } from "./shell/theme"
 import "./styles.css"
+
+applyTheme(readTheme())
 
 const router = createBrowserRouter([
   {

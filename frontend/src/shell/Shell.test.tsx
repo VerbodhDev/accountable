@@ -1,7 +1,13 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { expect, test } from "vitest"
+import { afterEach, expect, test } from "vitest"
 import { LoadError, Missing, PageHeading, Shell } from "./Shell"
+
+afterEach(() => {
+  localStorage.clear()
+  delete document.documentElement.dataset.theme
+})
 
 test("the shell shows the product name and the current page", () => {
   render(
@@ -20,6 +26,27 @@ test("the shell shows the product name and the current page", () => {
   expect(screen.getByRole("link", { name: "Deals" })).toBeTruthy()
   expect(screen.getByRole("link", { name: "Pipeline" })).toBeTruthy()
   expect(screen.getByText("Inside contacts")).toBeTruthy()
+})
+
+test("the dark mode control turns the page dark and then light", async () => {
+  const user = userEvent.setup()
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route path="/" element={<Shell />}>
+          <Route index element={<p>Inside</p>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
+  const toggle = screen.getByRole("button", { name: "Dark mode" })
+  expect(toggle).toHaveProperty("ariaPressed", "false")
+  await user.click(toggle)
+  expect(document.documentElement.dataset.theme).toBe("dark")
+  expect(toggle).toHaveProperty("ariaPressed", "true")
+  await user.click(toggle)
+  expect(document.documentElement.dataset.theme).toBe("light")
+  expect(toggle).toHaveProperty("ariaPressed", "false")
 })
 
 test("a page heading can carry actions", () => {

@@ -16,7 +16,13 @@
 
 :root {
   --bg: #f0f4f5;
+  --panel: #ffffff;
+  --row: #f7fafa;
   --ink: #073b4c;
+  --midnight: #073b4c;
+  --on-berry: #ffffff;
+  --line: #cdd8db;
+  --scrim: rgba(7, 59, 76, 0.35);
   --sea: #06d6a0;
   --gold: #ffc145;
   --coral: #f78c6b;
@@ -24,6 +30,15 @@
   --berry: #ef476f;
   --won: #04614a;
   --mist: #cdd8db;
+}
+
+:root[data-theme="dark"] {
+  --bg: #04232e;
+  --panel: #000000;
+  --row: #04232e;
+  --ink: #cdd8db;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --line: #1d4e60;
 }
 
 * {
@@ -71,7 +86,7 @@ a {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: #fff;
+  background: var(--panel);
   border-radius: 16px;
   padding: 10px 12px;
 }
@@ -92,6 +107,11 @@ a {
 
 .nav a.active {
   background: var(--sea);
+  color: var(--midnight);
+}
+
+.theme-toggle {
+  margin-left: auto;
 }
 
 h1 {
@@ -129,7 +149,7 @@ h3 {
 }
 
 .panel {
-  background: #fff;
+  background: var(--panel);
   border-radius: 16px;
   padding: 16px 18px;
 }
@@ -225,6 +245,7 @@ button.quiet {
 
 .filters button[aria-pressed="true"] {
   background: var(--sea);
+  color: var(--midnight);
 }
 
 button.primary,
@@ -239,12 +260,12 @@ button.quiet {
 
 button.primary {
   background: var(--sea);
-  color: var(--ink);
+  color: var(--midnight);
 }
 
 button.danger {
   background: var(--berry);
-  color: #fff;
+  color: var(--on-berry);
 }
 
 button.quiet {
@@ -259,7 +280,7 @@ button:disabled {
 .table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--panel);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -283,7 +304,7 @@ button:disabled {
 }
 
 .table tbody tr:nth-child(even) {
-  background: #f7fafa;
+  background: var(--row);
 }
 
 .empty {
@@ -306,7 +327,7 @@ button:disabled {
   z-index: 1;
   border: 0;
   padding: 0;
-  background: rgba(7, 59, 76, 0.35);
+  background: var(--scrim);
   cursor: default;
 }
 
@@ -319,7 +340,7 @@ button:disabled {
   width: min(520px, calc(100% - 32px));
   max-height: calc(100% - 64px);
   overflow: auto;
-  background: #fff;
+  background: var(--panel);
   border-radius: 16px;
   padding: 18px;
 }
@@ -374,7 +395,7 @@ button:disabled {
 }
 
 .col {
-  background: #fff;
+  background: var(--panel);
   border-radius: 16px;
   padding: 12px;
   display: flex;

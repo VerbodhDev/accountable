@@ -14,6 +14,8 @@ GitHub Actions runs one job, named check, on every push to any branch. It instal
 
 docs/IMPROVE.md is the Deploy step that runs after the review fixes and before the merge. AGENTS.md points to it.
 
+Dark mode is on the top bar of every page. Light mode is the default. The browser remembers the choice. The page background is #04232E in dark mode and panels are black. Ink is Sea Mist. Stage colors stay the same. The app does not follow the device setting.
+
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 
 A review on 2026-11-14 found one bug and no nits. On a contact timeline, delete named the contact for a deal activity and for a stage entry. The dialog now names the deal. A stage entry says that deal stays in its current stage. On the deal page the dialog still names that deal and its stage.
