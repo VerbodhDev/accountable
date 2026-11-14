@@ -23,6 +23,8 @@ Run `npm run check` from the repo root before calling work finished. Fix failure
 
 `npm run check:quick` runs the same checks without the end-to-end tests.
 
+A lefthook pre-commit hook formats the staged files, then runs lint, types, and gitleaks. It skips the tests. Grok runs `npm run check:quick` when a turn ends. A failure is sent back once, and the next stop is allowed. Edits to .env are blocked.
+
 `npm run format` fixes Prettier and ruff formatting.
 
 `npm test` runs the backend unit tests (pytest), the frontend unit tests (Vitest), and the end-to-end tests (Playwright). Playwright starts the app and uses its own database. The command fails if any test fails. Coverage is enforced by `npm run check`, not by `npm test` alone.

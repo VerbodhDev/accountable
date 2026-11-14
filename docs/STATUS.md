@@ -8,6 +8,8 @@ Run npm run check before calling work finished. It runs Prettier, ESLint, ruff f
 
 ESLint warns on TanStack Table's useReactTable. The table stays, because the product uses that library. The warning does not fail the check.
 
+A lefthook pre-commit hook formats the staged files, then runs ESLint, ruff check, tsc, ty, and gitleaks. It skips the tests. npm install sets the hook up. Grok hooks in .grok/hooks run npm run check:quick when a turn ends. A failure is sent back once, and the next stop is allowed. Those hooks also block an edit to .env.
+
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 
 A review on 2026-11-14 found one bug and no nits. On a contact timeline, delete named the contact for a deal activity and for a stage entry. The dialog now names the deal. A stage entry says that deal stays in its current stage. On the deal page the dialog still names that deal and its stage.
