@@ -36,8 +36,8 @@ Use a mature library for tables, charts and drag-and-drop; do not hand-roll them
 ## Rules specific to this repo
 
 - `README.md` is the course's own guide. Do not edit it. How to run the app goes in `docs/STATUS.md`.
-- Each piece of work starts from an intent in `docs/` (`docs/intent.md` for the MVP). Its "Not in the MVP" list is a hard limit on scope.
-- A feature is done only after someone used it end to end in a real browser with no console errors. Passing tests are not enough (success criterion 8 in `docs/intent.md`).
+- Each piece of work starts from the intent in `docs/changes/<branch name>/`. Read only that folder. `docs/spec.md` describes the product. Its "Not in this version" list is a hard limit on scope.
+- A feature is done only after someone used it end to end in a real browser with no console errors. Passing tests are not enough.
 - The brand guidelines take priority over general design guidance. On Week 1 Day 2 they move from `docs/BRAND.md` to the skill `.claude/skills/brand/SKILL.md`.
 - Many model and product names in the course are newer than your training data. Check `course/coding_agents/` or the product's docs before you correct one.
 

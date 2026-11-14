@@ -1,22 +1,14 @@
-# Spec: the Accountable MVP
+# Spec: Accountable
 
-## Concerns
+This file describes Accountable as it is today. It is the description of the product. A change edits this file on its branch. After that change merges, this file still describes the whole product. Each change keeps its intent and its plan in docs/changes/<branch name>/. Those files record that change. They do not replace this file.
 
-The intent does not settle these points. The rest of this spec assumes the choice in each line. Say if you want a different one.
+## Problem
 
-1. Usual close probability is New 10%, Qualified 30%, Proposal 50%, Negotiation 70%, Won 100%, and Lost 0%.
-2. The line chart shows revenue won for the last 6 months. The bar chart shows expected revenue by open stage. The funnel shows the value sitting in each open stage now. The app does not store a history of every stage a seeded deal passed through, so the funnel is not a historical conversion chart.
-3. The dashboard lists every overdue follow-up, and follow-ups due in the next 7 days. A later follow-up stays on the contact or deal only.
-4. Delete an organization and the app also deletes its contacts, its deals, and the activities on those records. Delete a contact and the deals stay, with no main contact. Delete a deal and the app deletes its activities and its stage entries.
-5. A contact timeline shows activities logged on that contact. It also shows activities and stage changes for deals where that contact is the main contact.
-6. The app ships the brand fonts with itself. It does not load them from Google. The app must work with no internet connection.
-7. `npm run seed` replaces every record with the sample data. It does not ask first.
-8. A move to Won or Lost sets the close date to today when the date is empty.
-9. The brand names five colors and the board has six stages. New, Qualified, Proposal, and Negotiation use Sea Green, Marigold, Coral, and Cerulean. Won uses a darker Sea Green. Lost uses Raspberry.
+A small business keeps track of its customers and sales in spreadsheets, inboxes and people's heads. Nobody can see at a glance which companies we deal with, who our contacts are, what's in the sales pipeline, what happened last with a customer or what needs doing next.
 
-## What this version is
+## What Accountable is
 
-Accountable is a sales CRM for the owner of one small business. The owner sells to other companies. This version runs on that one computer.
+Accountable is a business management system. It is a sales CRM that will grow into a full Business OS, including ERP. Today it is a complete sales CRM for the owner of one small business. The owner sells to other companies. It runs on that one computer.
 
 The owner can see companies, people, deals, the pipeline, and what to do next. The app keeps every change. A restart shows the same records.
 
@@ -86,7 +78,7 @@ When a deal changes stage, it takes the new stage's usual probability. A probabi
 
 Expected revenue for one deal is its value times its probability, divided by 100.
 
-A deal is open when its stage is not Won and not Lost. A deal is late when it is open and its close date is before today. Won and Lost deals are not late.
+A deal is open when its stage is not Won and not Lost. A deal is late when it is open and its close date is before today. Won and Lost deals are not late. A move to Won or Lost sets the close date to today when that date is empty.
 
 The owner can move a deal to another organization. If the main contact is not at that organization, the app clears the main contact.
 
@@ -171,7 +163,7 @@ A stage change writes a stage entry. The deals table shows the new stage and the
 
 From a contact or a deal, the owner logs a note, a call, or an email, and can set a follow-up date. The owner can edit or delete an activity.
 
-Timelines show the newest entry first. A timeline mixes activities and stage entries.
+Timelines show the newest entry first. A timeline mixes activities and stage entries. A contact timeline also shows activities and stage entries for deals where that contact is the main contact.
 
 ## Dashboard
 
@@ -250,6 +242,17 @@ The top bar is a white rounded panel. It shows the name Accountable and the five
 | Customer | Sea Green `#06D6A0` | Midnight |
 | Late | Raspberry `#EF476F` | White |
 | Overdue | Raspberry `#EF476F` | White |
+
+Stage chips use these fills. Won uses a darker Sea Green than the open New stage.
+
+| Stage | Fill | Text |
+|---|---|---|
+| New | Sea Green `#06D6A0` | Midnight |
+| Qualified | Marigold `#FFC145` | Midnight |
+| Proposal | Coral `#F78C6B` | Midnight |
+| Negotiation | Cerulean `#118AB2` | White |
+| Won | Darker Sea Green `#04614A` | White |
+| Lost | Raspberry `#EF476F` | White |
 
 Money always shows as US dollars, for example $1,250.00.
 
@@ -333,7 +336,7 @@ The backend listens on `127.0.0.1` port 8000. The frontend listens on `127.0.0.1
 
 The app needs no internet connection to use. Fonts are files in the frontend, not a request to Google.
 
-`docs/STATUS.md` will say how to run the app once the app exists. `README.md` stays as the course guide.
+`docs/STATUS.md` says how to run the app. `README.md` stays the course guide.
 
 ## Libraries
 
@@ -365,7 +368,7 @@ Sign-in, user accounts, several users, and a password. A record of who did what.
 
 ## Requirement IDs
 
-Each ID is one requirement from this spec. The plan cites these IDs. An ID is done only when that phase has delivered the whole line.
+Each ID is one requirement of the product. The sections above state the same requirements in full.
 
 | ID | Requirement |
 |---|---|

@@ -183,7 +183,7 @@ These risks guard S03, S30, S44, S55, S74, S76, S77, S80, and S85. They do not d
 
 ## Proof
 
-`npm test` runs pytest, Vitest, and Playwright. Any failure fails the command. The tests below are the set. Passing them is required. The owner still signs off in a browser, against the eight criteria in docs/intent.md.
+`npm test` runs pytest, Vitest, and Playwright. Any failure fails the command. The tests below are the set. Passing them is required. The owner still signs off in a browser, against the eight criteria in this folder's intent.md.
 
 ### Backend, pytest
 
