@@ -23,3 +23,7 @@ A review on 2026-11-14 found one bug and no nits. On a contact timeline, delete 
 On 2026-11-14 the docs were reorganized. docs/spec.md describes the product as it stands. The MVP intent and plan moved to docs/changes/mvp/. No application code changed.
 
 docs/STANDARDS.md holds the coding guidelines. AGENTS.md points to it. A review checks each change against it.
+
+## Ideas
+
+- When dark mode is on, the button label says Light mode, so the way back is clear.
