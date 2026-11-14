@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { MARKS, isLate } from "./late"
+import { MARKS, isLate, markStyle } from "./late"
 
 test("an open deal before today is late and a won deal is not", () => {
   const today = "2026-11-13"
@@ -13,4 +13,5 @@ test("an open deal before today is late and a won deal is not", () => {
   expect(MARKS.Customer).toEqual({ background: "#06D6A0", color: "#073B4C" })
   expect(MARKS.Late).toEqual({ background: "#EF476F", color: "#ffffff" })
   expect(MARKS.Overdue).toEqual({ background: "#EF476F", color: "#ffffff" })
+  expect(markStyle("Late")).toEqual(MARKS.Late)
 })

@@ -18,6 +18,9 @@ def get_conn(request: Request):
         yield conn
 
 
+db_conn = Depends(get_conn)
+
+
 def _today() -> date:
     return date.today()
 
@@ -69,16 +72,20 @@ def _deal_out(row, organization_name: str, contact_name: str | None, today: date
 
 
 def _load_deal(conn: Connection, deal_id: int, today: date) -> dict | None:
-    row = conn.execute(
-        select(
-            deals,
-            organizations.c.name.label("organization_name"),
-            contacts.c.name.label("contact_name"),
+    row = (
+        conn.execute(
+            select(
+                deals,
+                organizations.c.name.label("organization_name"),
+                contacts.c.name.label("contact_name"),
+            )
+            .join(organizations, deals.c.organization_id == organizations.c.id)
+            .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
+            .where(deals.c.id == deal_id)
         )
-        .join(organizations, deals.c.organization_id == organizations.c.id)
-        .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
-        .where(deals.c.id == deal_id)
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if row is None:
         return None
     return _deal_out(row, row["organization_name"], row["contact_name"], today)
@@ -125,14 +132,18 @@ def _deal_timeline(conn: Connection, deal_id: int, deal_name: str) -> list[dict]
     items = []
     for row in conn.execute(select(activities).where(activities.c.deal_id == deal_id)).mappings():
         items.append(_activity_item(row, "deal", deal_id, deal_name))
-    for row in conn.execute(select(stage_entries).where(stage_entries.c.deal_id == deal_id)).mappings():
+    for row in conn.execute(
+        select(stage_entries).where(stage_entries.c.deal_id == deal_id)
+    ).mappings():
         items.append(_stage_item(row, deal_name))
     return _sort_timeline(items)
 
 
 def _contact_timeline(conn: Connection, contact_id: int, contact_name: str) -> list[dict]:
     items = []
-    for row in conn.execute(select(activities).where(activities.c.contact_id == contact_id)).mappings():
+    for row in conn.execute(
+        select(activities).where(activities.c.contact_id == contact_id)
+    ).mappings():
         items.append(_activity_item(row, "contact", contact_id, contact_name))
     deal_rows = conn.execute(
         select(deals.c.id, deals.c.name).where(deals.c.contact_id == contact_id)
@@ -140,9 +151,13 @@ def _contact_timeline(conn: Connection, contact_id: int, contact_name: str) -> l
     deal_ids = [row.id for row in deal_rows]
     names = {row.id: row.name for row in deal_rows}
     if deal_ids:
-        for row in conn.execute(select(activities).where(activities.c.deal_id.in_(deal_ids))).mappings():
+        for row in conn.execute(
+            select(activities).where(activities.c.deal_id.in_(deal_ids))
+        ).mappings():
             items.append(_activity_item(row, "deal", row["deal_id"], names[row["deal_id"]]))
-        for row in conn.execute(select(stage_entries).where(stage_entries.c.deal_id.in_(deal_ids))).mappings():
+        for row in conn.execute(
+            select(stage_entries).where(stage_entries.c.deal_id.in_(deal_ids))
+        ).mappings():
             items.append(_stage_item(row, names[row["deal_id"]]))
     return _sort_timeline(items)
 
@@ -159,7 +174,7 @@ def _ordered(column, direction: str, blanks_last: bool = False):
 
 
 @router.get("/dashboard")
-def get_dashboard(conn: Connection = Depends(get_conn)):
+def get_dashboard(conn: Connection = db_conn):
     return rules.dashboard(conn, _today())
 
 
@@ -168,7 +183,7 @@ def list_organizations(
     q: str = "",
     sort: str = "",
     dir: str = "",
-    conn: Connection = Depends(get_conn),
+    conn: Connection = db_conn,
 ):
     stmt = select(organizations)
     needle = q.strip().lower()
@@ -192,45 +207,54 @@ def list_organizations(
 
 
 @router.post("/organizations", status_code=201)
-def post_organization(body: OrganizationIn, conn: Connection = Depends(get_conn)):
+def post_organization(body: OrganizationIn, conn: Connection = db_conn):
     org_id = rules.create_organization(conn, body.model_dump(exclude_unset=True))
     row = conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().one()
     return _org_out(row)
 
 
 @router.get("/organizations/{org_id}")
-def get_organization(org_id: int, conn: Connection = Depends(get_conn)):
+def get_organization(org_id: int, conn: Connection = db_conn):
     row = conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().first()
     if row is None:
         raise HTTPException(status_code=404, detail="Not found")
     today = _today()
-    people = conn.execute(
-        select(contacts, organizations.c.name.label("organization_name"))
-        .outerjoin(organizations, contacts.c.organization_id == organizations.c.id)
-        .where(contacts.c.organization_id == org_id)
-        .order_by(contacts.c.name)
-    ).mappings().all()
-    deal_rows = conn.execute(
-        select(
-            deals,
-            organizations.c.name.label("organization_name"),
-            contacts.c.name.label("contact_name"),
+    people = (
+        conn.execute(
+            select(contacts, organizations.c.name.label("organization_name"))
+            .outerjoin(organizations, contacts.c.organization_id == organizations.c.id)
+            .where(contacts.c.organization_id == org_id)
+            .order_by(contacts.c.name)
         )
-        .join(organizations, deals.c.organization_id == organizations.c.id)
-        .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
-        .where(deals.c.organization_id == org_id)
-        .order_by(deals.c.name)
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
+    deal_rows = (
+        conn.execute(
+            select(
+                deals,
+                organizations.c.name.label("organization_name"),
+                contacts.c.name.label("contact_name"),
+            )
+            .join(organizations, deals.c.organization_id == organizations.c.id)
+            .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
+            .where(deals.c.organization_id == org_id)
+            .order_by(deals.c.name)
+        )
+        .mappings()
+        .all()
+    )
     payload = _org_out(row)
     payload["contacts"] = [_contact_out(item, item["organization_name"]) for item in people]
     payload["deals"] = [
-        _deal_out(item, item["organization_name"], item["contact_name"], today) for item in deal_rows
+        _deal_out(item, item["organization_name"], item["contact_name"], today)
+        for item in deal_rows
     ]
     return payload
 
 
 @router.patch("/organizations/{org_id}")
-def patch_organization(org_id: int, body: OrganizationIn, conn: Connection = Depends(get_conn)):
+def patch_organization(org_id: int, body: OrganizationIn, conn: Connection = db_conn):
     if not _found(conn, organizations, org_id):
         raise HTTPException(status_code=404, detail="Not found")
     rules.update_organization(conn, org_id, body.model_dump(exclude_unset=True))
@@ -239,7 +263,7 @@ def patch_organization(org_id: int, body: OrganizationIn, conn: Connection = Dep
 
 
 @router.delete("/organizations/{org_id}", status_code=204)
-def remove_organization(org_id: int, conn: Connection = Depends(get_conn)):
+def remove_organization(org_id: int, conn: Connection = db_conn):
     if not rules.delete_organization(conn, org_id):
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
@@ -251,7 +275,7 @@ def list_contacts(
     sort: str = "",
     dir: str = "",
     status: str = "",
-    conn: Connection = Depends(get_conn),
+    conn: Connection = db_conn,
 ):
     stmt = select(contacts, organizations.c.name.label("organization_name")).outerjoin(
         organizations, contacts.c.organization_id == organizations.c.id
@@ -288,32 +312,41 @@ def list_contacts(
 
 
 @router.post("/contacts", status_code=201)
-def post_contact(body: ContactIn, conn: Connection = Depends(get_conn)):
+def post_contact(body: ContactIn, conn: Connection = db_conn):
     contact_id = rules.create_contact(conn, body.model_dump(exclude_unset=True))
     return _contact_payload(conn, contact_id)
 
 
 def _contact_payload(conn: Connection, contact_id: int) -> dict:
-    row = conn.execute(
-        select(contacts, organizations.c.name.label("organization_name"))
-        .outerjoin(organizations, contacts.c.organization_id == organizations.c.id)
-        .where(contacts.c.id == contact_id)
-    ).mappings().one()
+    row = (
+        conn.execute(
+            select(contacts, organizations.c.name.label("organization_name"))
+            .outerjoin(organizations, contacts.c.organization_id == organizations.c.id)
+            .where(contacts.c.id == contact_id)
+        )
+        .mappings()
+        .one()
+    )
     payload = _contact_out(row, row["organization_name"])
     today = _today()
-    deal_rows = conn.execute(
-        select(
-            deals,
-            organizations.c.name.label("organization_name"),
-            contacts.c.name.label("contact_name"),
+    deal_rows = (
+        conn.execute(
+            select(
+                deals,
+                organizations.c.name.label("organization_name"),
+                contacts.c.name.label("contact_name"),
+            )
+            .join(organizations, deals.c.organization_id == organizations.c.id)
+            .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
+            .where(deals.c.contact_id == contact_id)
+            .order_by(deals.c.name)
         )
-        .join(organizations, deals.c.organization_id == organizations.c.id)
-        .outerjoin(contacts, deals.c.contact_id == contacts.c.id)
-        .where(deals.c.contact_id == contact_id)
-        .order_by(deals.c.name)
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     payload["deals"] = [
-        _deal_out(item, item["organization_name"], item["contact_name"], today) for item in deal_rows
+        _deal_out(item, item["organization_name"], item["contact_name"], today)
+        for item in deal_rows
     ]
     payload["timeline"] = _contact_timeline(conn, contact_id, row["name"])
     payload["today"] = today.isoformat()
@@ -321,14 +354,14 @@ def _contact_payload(conn: Connection, contact_id: int) -> dict:
 
 
 @router.get("/contacts/{contact_id}")
-def get_contact(contact_id: int, conn: Connection = Depends(get_conn)):
+def get_contact(contact_id: int, conn: Connection = db_conn):
     if not _found(conn, contacts, contact_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _contact_payload(conn, contact_id)
 
 
 @router.patch("/contacts/{contact_id}")
-def patch_contact(contact_id: int, body: ContactIn, conn: Connection = Depends(get_conn)):
+def patch_contact(contact_id: int, body: ContactIn, conn: Connection = db_conn):
     if not _found(conn, contacts, contact_id):
         raise HTTPException(status_code=404, detail="Not found")
     rules.update_contact(conn, contact_id, body.model_dump(exclude_unset=True))
@@ -336,7 +369,7 @@ def patch_contact(contact_id: int, body: ContactIn, conn: Connection = Depends(g
 
 
 @router.delete("/contacts/{contact_id}", status_code=204)
-def remove_contact(contact_id: int, conn: Connection = Depends(get_conn)):
+def remove_contact(contact_id: int, conn: Connection = db_conn):
     if not rules.delete_contact(conn, contact_id):
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
@@ -359,7 +392,7 @@ def list_deals(
     q: str = "",
     sort: str = "",
     dir: str = "",
-    conn: Connection = Depends(get_conn),
+    conn: Connection = db_conn,
 ):
     stmt = _deal_stmt()
     needle = q.strip().lower()
@@ -390,12 +423,14 @@ def list_deals(
     rows = conn.execute(stmt).mappings().all()
     return {
         "today": today.isoformat(),
-        "items": [_deal_out(row, row["organization_name"], row["contact_name"], today) for row in rows],
+        "items": [
+            _deal_out(row, row["organization_name"], row["contact_name"], today) for row in rows
+        ],
     }
 
 
 @router.post("/deals", status_code=201)
-def post_deal(body: DealIn, conn: Connection = Depends(get_conn)):
+def post_deal(body: DealIn, conn: Connection = db_conn):
     deal_id = rules.create_deal(conn, body.model_dump(exclude_unset=True), _today())
     return _deal_payload(conn, deal_id)
 
@@ -403,20 +438,22 @@ def post_deal(body: DealIn, conn: Connection = Depends(get_conn)):
 def _deal_payload(conn: Connection, deal_id: int) -> dict:
     today = _today()
     payload = _load_deal(conn, deal_id, today)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Not found")
     payload["timeline"] = _deal_timeline(conn, deal_id, payload["name"])
     payload["today"] = today.isoformat()
     return payload
 
 
 @router.get("/deals/{deal_id}")
-def get_deal(deal_id: int, conn: Connection = Depends(get_conn)):
+def get_deal(deal_id: int, conn: Connection = db_conn):
     if not _found(conn, deals, deal_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _deal_payload(conn, deal_id)
 
 
 @router.patch("/deals/{deal_id}")
-def patch_deal(deal_id: int, body: DealIn, conn: Connection = Depends(get_conn)):
+def patch_deal(deal_id: int, body: DealIn, conn: Connection = db_conn):
     if not _found(conn, deals, deal_id):
         raise HTTPException(status_code=404, detail="Not found")
     rules.update_deal(conn, deal_id, body.model_dump(exclude_unset=True), _today())
@@ -424,41 +461,45 @@ def patch_deal(deal_id: int, body: DealIn, conn: Connection = Depends(get_conn))
 
 
 @router.delete("/deals/{deal_id}", status_code=204)
-def remove_deal(deal_id: int, conn: Connection = Depends(get_conn)):
+def remove_deal(deal_id: int, conn: Connection = db_conn):
     if not rules.delete_deal(conn, deal_id):
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
 
 
 @router.post("/activities", status_code=201)
-def post_activity(body: ActivityIn, conn: Connection = Depends(get_conn)):
+def post_activity(body: ActivityIn, conn: Connection = db_conn):
     activity_id = rules.create_activity(conn, body.model_dump(exclude_unset=True), _today())
     row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
     record_type = "contact" if row["contact_id"] else "deal"
     record_id = row["contact_id"] or row["deal_id"]
-    return _activity_item(row, record_type, record_id, rules._record_name(conn, record_type, record_id))
+    return _activity_item(
+        row, record_type, record_id, rules._record_name(conn, record_type, record_id)
+    )
 
 
 @router.patch("/activities/{activity_id}")
-def patch_activity(activity_id: int, body: ActivityIn, conn: Connection = Depends(get_conn)):
+def patch_activity(activity_id: int, body: ActivityIn, conn: Connection = db_conn):
     if not _found(conn, activities, activity_id):
         raise HTTPException(status_code=404, detail="Not found")
     rules.update_activity(conn, activity_id, body.model_dump(exclude_unset=True), _today())
     row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
     record_type = "contact" if row["contact_id"] else "deal"
     record_id = row["contact_id"] or row["deal_id"]
-    return _activity_item(row, record_type, record_id, rules._record_name(conn, record_type, record_id))
+    return _activity_item(
+        row, record_type, record_id, rules._record_name(conn, record_type, record_id)
+    )
 
 
 @router.delete("/activities/{activity_id}", status_code=204)
-def remove_activity(activity_id: int, conn: Connection = Depends(get_conn)):
+def remove_activity(activity_id: int, conn: Connection = db_conn):
     if not rules.delete_activity(conn, activity_id):
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
 
 
 @router.delete("/stage-entries/{entry_id}", status_code=204)
-def remove_stage_entry(entry_id: int, conn: Connection = Depends(get_conn)):
+def remove_stage_entry(entry_id: int, conn: Connection = db_conn):
     if not rules.delete_stage_entry(conn, entry_id):
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)

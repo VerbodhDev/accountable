@@ -18,12 +18,17 @@ function byDate<T extends FollowUp>(left: T, right: T): number {
   return left.id - right.id
 }
 
-export function splitFollowUps<T extends FollowUp>(rows: T[], today: string): { overdue: T[]; upcoming: T[] } {
+export function splitFollowUps<T extends FollowUp>(
+  rows: T[],
+  today: string,
+): { overdue: T[]; upcoming: T[] } {
   const end = addDays(today, 7)
   const open = rows.filter((row) => !row.done && row.follow_up_date)
   return {
     overdue: open.filter((row) => row.follow_up_date! < today).sort(byDate),
-    upcoming: open.filter((row) => row.follow_up_date! >= today && row.follow_up_date! <= end).sort(byDate),
+    upcoming: open
+      .filter((row) => row.follow_up_date! >= today && row.follow_up_date! <= end)
+      .sort(byDate),
   }
 }
 

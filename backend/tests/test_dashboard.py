@@ -12,11 +12,18 @@ def test_dashboard_math_matches_the_rows(api):
     won_month = [
         row
         for row in deals
-        if row["stage"] == "Won" and row["close_date"] and row["close_date"].startswith(today.strftime("%Y-%m"))
+        if row["stage"] == "Won"
+        and row["close_date"]
+        and row["close_date"].startswith(today.strftime("%Y-%m"))
     ]
     assert board["won_this_month_cents"] == sum(row["value_cents"] for row in won_month)
     assert board["won_this_month_count"] == len(won_month)
-    assert [row["stage"] for row in board["open_stages"]] == ["New", "Qualified", "Proposal", "Negotiation"]
+    assert [row["stage"] for row in board["open_stages"]] == [
+        "New",
+        "Qualified",
+        "Proposal",
+        "Negotiation",
+    ]
     assert all(row["stage"] not in ("Won", "Lost") for row in board["open_stages"])
 
 
@@ -52,7 +59,10 @@ def test_follow_up_window_and_order(api):
     assert all(board["today"] <= row["follow_up_date"] for row in board["upcoming"])
     later = [row for row in board["tasks"] if row["group"] == "later"]
     assert later
-    assert all(row["description"] not in {item["description"] for item in later} for row in board["overdue"])
+    assert all(
+        row["description"] not in {item["description"] for item in later}
+        for row in board["overdue"]
+    )
     assert board["overdue_count"] == len(board["overdue"])
 
 

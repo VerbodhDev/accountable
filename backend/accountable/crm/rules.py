@@ -1,6 +1,6 @@
 import calendar
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from sqlalchemy import delete, select, update
 
@@ -45,7 +45,10 @@ def parse_money(raw, required: bool) -> int | None:
         raise FieldError("value", "Value must be a number of US dollars") from None
     if amount < 0:
         raise FieldError("value", "Value must be zero or more")
-    if amount.as_tuple().exponent < -2:
+    if not amount.is_finite():
+        raise FieldError("value", "Value must be a number of US dollars")
+    exponent = amount.as_tuple().exponent
+    if isinstance(exponent, str) or exponent < -2:
         raise FieldError("value", "Use at most two decimal places")
     return int((amount * 100).to_integral_value(rounding=ROUND_HALF_UP))
 
@@ -149,7 +152,9 @@ def create_organization(conn, payload: dict) -> int:
 
 
 def update_organization(conn, org_id: int, payload: dict) -> None:
-    current = conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().first()
+    current = (
+        conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().first()
+    )
     if current is None:
         return
     values = {}
@@ -258,17 +263,16 @@ def create_deal(conn, payload: dict, today: date) -> int:
     return int(result.inserted_primary_key[0])
 
 
-def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
-    current = conn.execute(select(deals).where(deals.c.id == deal_id)).mappings().first()
-    if current is None:
-        return
+def _next_stage(current, payload: dict) -> tuple[str, bool]:
     stage = current["stage"]
-    stage_changed = False
-    if "stage" in payload and payload.get("stage") not in (None, ""):
-        if payload["stage"] not in STAGES:
-            raise FieldError("stage", "Choose a stage")
-        stage_changed = payload["stage"] != current["stage"]
-        stage = payload["stage"]
+    if "stage" not in payload or payload.get("stage") in (None, ""):
+        return stage, False
+    if payload["stage"] not in STAGES:
+        raise FieldError("stage", "Choose a stage")
+    return payload["stage"], payload["stage"] != stage
+
+
+def _next_parties(conn, current, payload: dict) -> tuple[int, int | None]:
     organization_id = current["organization_id"]
     if "organization_id" in payload and payload.get("organization_id") is not None:
         _require_org(conn, payload["organization_id"])
@@ -276,16 +280,20 @@ def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
     contact_id = current["contact_id"]
     if "contact_id" in payload:
         contact_id = payload.get("contact_id")
-    elif organization_id != current["organization_id"] and contact_id is not None:
-        contact_org = _contact_org(conn, contact_id)
-        if contact_org != organization_id:
-            contact_id = None
+    elif (
+        organization_id != current["organization_id"]
+        and contact_id is not None
+        and _contact_org(conn, contact_id) != organization_id
+    ):
+        contact_id = None
     _check_contact_for_org(conn, organization_id, contact_id)
-    values = {
-        "organization_id": organization_id,
-        "contact_id": contact_id,
-        "stage": stage,
-    }
+    return organization_id, contact_id
+
+
+def _deal_field_changes(
+    current, payload: dict, stage: str, stage_changed: bool, today: date
+) -> dict:
+    values: dict = {}
     if "name" in payload:
         name = clean(payload.get("name"))
         if not name:
@@ -303,12 +311,31 @@ def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
     elif "probability" in payload and payload.get("probability") is not None:
         values["probability"] = parse_probability(payload.get("probability"), required=True)
         values["probability_hand_set"] = True
+    return values
+
+
+def _insert_at(ids: list[int], deal_id: int, position) -> None:
+    index = 0 if position is None else max(0, min(int(position), len(ids)))
+    ids.insert(index, deal_id)
+
+
+def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
+    current = conn.execute(select(deals).where(deals.c.id == deal_id)).mappings().first()
+    if current is None:
+        return
+    stage, stage_changed = _next_stage(current, payload)
+    organization_id, contact_id = _next_parties(conn, current, payload)
+    values = {
+        "organization_id": organization_id,
+        "contact_id": contact_id,
+        "stage": stage,
+        **_deal_field_changes(current, payload, stage, stage_changed, today),
+    }
     position = payload.get("position") if "position" in payload else None
     if stage_changed:
         old_ids = _column_ids(conn, current["stage"], skip=deal_id)
         new_ids = _column_ids(conn, stage, skip=deal_id)
-        index = 0 if position is None else max(0, min(int(position), len(new_ids)))
-        new_ids.insert(index, deal_id)
+        _insert_at(new_ids, deal_id, position)
         conn.execute(update(deals).where(deals.c.id == deal_id).values(**values))
         _reindex(conn, current["stage"], old_ids)
         _reindex(conn, stage, new_ids)
@@ -322,8 +349,7 @@ def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
         return
     if position is not None and int(position) != current["position"]:
         ids = _column_ids(conn, stage, skip=deal_id)
-        index = max(0, min(int(position), len(ids)))
-        ids.insert(index, deal_id)
+        _insert_at(ids, deal_id, position)
         conn.execute(update(deals).where(deals.c.id == deal_id).values(**values))
         _reindex(conn, stage, ids)
         return
@@ -342,7 +368,11 @@ def _activity_values(payload: dict, current: dict | None, today: date) -> dict:
     kind = payload.get("type") if "type" in payload else (current["type"] if current else None)
     if kind not in ACTIVITY_TYPES:
         raise FieldError("type", "Type must be Note, Call, or Email")
-    description = payload.get("description") if "description" in payload else (current["description"] if current else None)
+    description = (
+        payload.get("description")
+        if "description" in payload
+        else (current["description"] if current else None)
+    )
     description = clean(description)
     if not description:
         raise FieldError("description", "Description is required")
@@ -393,7 +423,9 @@ def create_activity(conn, payload: dict, today: date) -> int:
 
 
 def update_activity(conn, activity_id: int, payload: dict, today: date) -> None:
-    current = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().first()
+    current = (
+        conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().first()
+    )
     if current is None:
         return
     if payload.get("contact_id") is not None:
@@ -523,7 +555,9 @@ def dashboard(conn, today: date) -> dict:
                 "stage": stage,
                 "count": len(rows),
                 "value_cents": sum(row["value_cents"] for row in rows),
-                "expected_cents": sum(expected_cents(row["value_cents"], row["probability"]) for row in rows),
+                "expected_cents": sum(
+                    expected_cents(row["value_cents"], row["probability"]) for row in rows
+                ),
             }
         )
     activity_rows = conn.execute(select(activities)).mappings().all()

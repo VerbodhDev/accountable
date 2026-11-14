@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { ApiError, api, type Dashboard } from "../../lib/api"
 import { shortDate } from "../../lib/format"
@@ -12,16 +12,19 @@ export function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null)
   const [error, setError] = useState(false)
 
-  async function load() {
-    try {
-      setError(false)
-      setData(await api.dashboard())
-    } catch {
-      setError(true)
-    }
-  }
+  const load = useCallback(() => {
+    return api
+      .dashboard()
+      .then((next) => {
+        setError(false)
+        setData(next)
+      })
+      .catch(() => setError(true))
+  }, [])
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+  }, [load])
 
   async function markDone(id: number) {
     try {
@@ -63,7 +66,13 @@ export function DashboardPage() {
                     <span className="when">{shortDate(item.happened_at)}</span>
                     <span>
                       <strong>{item.title}</strong>{" "}
-                      <Link to={item.record_type === "contact" ? `/contacts/${item.record_id}` : `/deals/${item.record_id}`}>
+                      <Link
+                        to={
+                          item.record_type === "contact"
+                            ? `/contacts/${item.record_id}`
+                            : `/deals/${item.record_id}`
+                        }
+                      >
                         {item.record_name}
                       </Link>
                       {item.detail ? <> {item.detail}</> : null}
@@ -75,19 +84,25 @@ export function DashboardPage() {
             <section className="panel">
               <h2>Follow-ups</h2>
               <h3>Overdue</h3>
-              {split.overdue.length === 0 ? <p className="empty">There are no records yet.</p> : null}
+              {split.overdue.length === 0 ? (
+                <p className="empty">There are no records yet.</p>
+              ) : null}
               {split.overdue.map((task) => (
                 <TaskRow key={task.id} task={task} today={data.today} onDone={markDone} />
               ))}
               <h3>Upcoming</h3>
-              {split.upcoming.length === 0 ? <p className="empty">There are no records yet.</p> : null}
+              {split.upcoming.length === 0 ? (
+                <p className="empty">There are no records yet.</p>
+              ) : null}
               {split.upcoming.map((task) => (
                 <TaskRow key={task.id} task={task} today={data.today} onDone={markDone} />
               ))}
             </section>
           </div>
         </>
-      ) : error ? null : <p>Loading records.</p>}
+      ) : error ? null : (
+        <p>Loading records.</p>
+      )}
     </>
   )
 }
@@ -110,16 +125,25 @@ function TaskRow({
   today: string
   onDone: (id: number) => void
 }) {
-  const href = task.record_type === "contact" ? `/contacts/${task.record_id}` : `/deals/${task.record_id}`
+  const href =
+    task.record_type === "contact" ? `/contacts/${task.record_id}` : `/deals/${task.record_id}`
   const overdue = followUpMark(task.follow_up_date, today) === "Overdue"
   return (
     <div className="task">
       <div>
-        {overdue ? <span className="pill" style={markStyle("Overdue")}>Overdue</span> : null}{" "}
+        {overdue ? (
+          <span className="pill" style={markStyle("Overdue")}>
+            Overdue
+          </span>
+        ) : null}{" "}
         <strong>{task.description}</strong>
-        <p><Link to={href}>{task.record_name}</Link>, {shortDate(task.follow_up_date)}</p>
+        <p>
+          <Link to={href}>{task.record_name}</Link>, {shortDate(task.follow_up_date)}
+        </p>
       </div>
-      <button type="button" className="primary" onClick={() => onDone(task.id)}>Mark done</button>
+      <button type="button" className="primary" onClick={() => onDone(task.id)}>
+        Mark done
+      </button>
     </div>
   )
 }

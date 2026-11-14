@@ -1,8 +1,12 @@
+import { fileURLToPath } from "node:url"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
 
+const rechartsStub = fileURLToPath(new URL("./test/rechartsStub.tsx", import.meta.url))
+
 export default defineConfig({
   plugins: [react()],
+  resolve: process.env.VITEST ? { alias: { recharts: rechartsStub } } : {},
   server: {
     host: "127.0.0.1",
     port: 5173,
@@ -13,6 +17,14 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.ts"],
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+      reporter: ["text-summary"],
+      thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
+    },
   },
 })

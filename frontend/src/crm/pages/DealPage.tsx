@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { ApiError, api, type Contact, type DealDetail, type Organization } from "../../lib/api"
 import { shortDate } from "../../lib/format"
@@ -24,22 +24,24 @@ export function DealPage() {
   const [removing, setRemoving] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  async function load() {
-    if (!Number.isInteger(dealId)) {
-      setMissing(true)
-      return
-    }
-    try {
-      setError(false)
-      setMissing(false)
-      setDeal(await api.deal(dealId))
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 404) setMissing(true)
-      else setError(true)
-    }
-  }
+  const load = useCallback(() => {
+    return api
+      .deal(dealId)
+      .then((row) => {
+        setError(false)
+        setMissing(false)
+        setDeal(row)
+      })
+      .catch((caught: unknown) => {
+        if (caught instanceof ApiError && caught.status === 404) setMissing(true)
+        else setError(true)
+      })
+  }, [dealId])
 
-  useEffect(() => { void load() }, [dealId])
+  useEffect(() => {
+    if (!Number.isInteger(dealId)) return
+    void load()
+  }, [dealId, load])
 
   async function openEdit() {
     const [orgs, people] = await Promise.all([api.organizations(), api.contacts()])
@@ -48,7 +50,7 @@ export function DealPage() {
     setEditing(true)
   }
 
-  if (missing) return <Missing />
+  if (!Number.isInteger(dealId) || missing) return <Missing />
   if (error) return <LoadError />
   if (!deal) return <p>Loading records.</p>
 
@@ -57,25 +59,57 @@ export function DealPage() {
   return (
     <>
       <PageHeading title={deal.name}>
-        {late ? <span className="pill" style={markStyle("Late")}>Late</span> : null}
-        <button type="button" className="quiet" onClick={() => void openEdit()}>Edit</button>
-        <button type="button" className="quiet" onClick={() => setRemoving(true)}>Delete</button>
+        {late ? (
+          <span className="pill" style={markStyle("Late")}>
+            Late
+          </span>
+        ) : null}
+        <button type="button" className="quiet" onClick={() => void openEdit()}>
+          Edit
+        </button>
+        <button type="button" className="quiet" onClick={() => setRemoving(true)}>
+          Delete
+        </button>
       </PageHeading>
       <section className="panel">
         <ul className="facts">
-          <li><span>Organization</span><Link to={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link></li>
+          <li>
+            <span>Organization</span>
+            <Link to={`/organizations/${deal.organization_id}`}>{deal.organization_name}</Link>
+          </li>
           <li>
             <span>Main contact</span>
-            {deal.contact_id ? <Link to={`/contacts/${deal.contact_id}`}>{deal.contact_name}</Link> : <b>No main contact</b>}
+            {deal.contact_id ? (
+              <Link to={`/contacts/${deal.contact_id}`}>{deal.contact_name}</Link>
+            ) : (
+              <b>No main contact</b>
+            )}
           </li>
           <li>
             <span>Stage</span>
-            <span className="chip" style={{ background: STAGE_COLOR[deal.stage], color: stageInk(deal.stage) }}>{deal.stage}</span>
+            <span
+              className="chip"
+              style={{ background: STAGE_COLOR[deal.stage], color: stageInk(deal.stage) }}
+            >
+              {deal.stage}
+            </span>
           </li>
-          <li><span>Value</span><b className="mono">{money(deal.value_cents)}</b></li>
-          <li><span>Expected revenue</span><b className="mono">{money(deal.expected_cents)}</b></li>
-          <li><span>Probability</span><b className="mono">{deal.probability}</b></li>
-          <li><span>Close date</span><b className="mono">{shortDate(deal.close_date)}</b></li>
+          <li>
+            <span>Value</span>
+            <b className="mono">{money(deal.value_cents)}</b>
+          </li>
+          <li>
+            <span>Expected revenue</span>
+            <b className="mono">{money(deal.expected_cents)}</b>
+          </li>
+          <li>
+            <span>Probability</span>
+            <b className="mono">{deal.probability}</b>
+          </li>
+          <li>
+            <span>Close date</span>
+            <b className="mono">{shortDate(deal.close_date)}</b>
+          </li>
         </ul>
       </section>
       <Timeline
@@ -91,7 +125,10 @@ export function DealPage() {
           organizations={organizations}
           contacts={contacts}
           onCancel={() => setEditing(false)}
-          onSaved={() => { setEditing(false); void load() }}
+          onSaved={() => {
+            setEditing(false)
+            void load()
+          }}
         />
       ) : null}
       {removing ? (
@@ -102,7 +139,10 @@ export function DealPage() {
           onCancel={() => setRemoving(false)}
           onConfirm={() => {
             setBusy(true)
-            void api.deleteDeal(deal.id).then(() => navigate("/deals")).catch(() => setBusy(false))
+            void api
+              .deleteDeal(deal.id)
+              .then(() => navigate("/deals"))
+              .catch(() => setBusy(false))
           }}
         />
       ) : null}

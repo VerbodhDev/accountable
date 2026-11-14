@@ -45,7 +45,11 @@ def _each_activity(client):
                 yield item
     for contact in client.get("/api/contacts").json()["items"]:
         for item in client.get(f"/api/contacts/{contact['id']}").json()["timeline"]:
-            if item["kind"] == "activity" and item["record_type"] == "contact" and item["id"] not in seen:
+            if (
+                item["kind"] == "activity"
+                and item["record_type"] == "contact"
+                and item["id"] not in seen
+            ):
                 seen.add(item["id"])
                 yield item
 
@@ -97,6 +101,7 @@ def test_seed_script_does_not_ask(tmp_path, monkeypatch):
     env["PYTHONPATH"] = "backend"
     result = subprocess.run(
         ["node", "scripts/seed.mjs"],
+        check=False,
         cwd=Path_repo(),
         env=env,
         input=b"",

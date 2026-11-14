@@ -31,3 +31,15 @@ test("the seven day window crosses a month boundary", () => {
   expect(split.upcoming.map((row) => row.description)).toEqual(["inside"])
   expect(split.overdue).toEqual([])
 })
+
+test("the same follow-up date keeps the lower id first", () => {
+  const split = splitFollowUps(
+    [
+      { id: 9, description: "later id", follow_up_date: "2026-11-01", done: false },
+      { id: 2, description: "earlier id", follow_up_date: "2026-11-01", done: false },
+    ],
+    "2026-11-14",
+  )
+  expect(split.overdue.map((row) => row.id)).toEqual([2, 9])
+  expect(followUpMark("2026-11-20", "2026-11-14")).toBe(null)
+})

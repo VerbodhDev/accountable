@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { ApiError, api, type ContactDetail, type Organization } from "../../lib/api"
 import { money } from "../../lib/money"
@@ -21,22 +21,24 @@ export function ContactPage() {
   const [removing, setRemoving] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  async function load() {
-    if (!Number.isInteger(contactId)) {
-      setMissing(true)
-      return
-    }
-    try {
-      setError(false)
-      setMissing(false)
-      setContact(await api.contact(contactId))
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 404) setMissing(true)
-      else setError(true)
-    }
-  }
+  const load = useCallback(() => {
+    return api
+      .contact(contactId)
+      .then((row) => {
+        setError(false)
+        setMissing(false)
+        setContact(row)
+      })
+      .catch((caught: unknown) => {
+        if (caught instanceof ApiError && caught.status === 404) setMissing(true)
+        else setError(true)
+      })
+  }, [contactId])
 
-  useEffect(() => { void load() }, [contactId])
+  useEffect(() => {
+    if (!Number.isInteger(contactId)) return
+    void load()
+  }, [contactId, load])
 
   async function openEdit() {
     const data = await api.organizations()
@@ -44,31 +46,57 @@ export function ContactPage() {
     setEditing(true)
   }
 
-  if (missing) return <Missing />
+  if (!Number.isInteger(contactId) || missing) return <Missing />
   if (error) return <LoadError />
   if (!contact) return <p>Loading records.</p>
 
   return (
     <>
       <PageHeading title={contact.name}>
-        <button type="button" className="quiet" onClick={() => void openEdit()}>Edit</button>
-        <button type="button" className="quiet" onClick={() => setRemoving(true)}>Delete</button>
+        <button type="button" className="quiet" onClick={() => void openEdit()}>
+          Edit
+        </button>
+        <button type="button" className="quiet" onClick={() => setRemoving(true)}>
+          Delete
+        </button>
       </PageHeading>
       <section className="panel">
         <ul className="facts">
-          <li><span>Status</span><span className="chip" style={markStyle(contact.status as MarkName)}>{contact.status}</span></li>
-          <li><span>Email</span><b>{contact.email || ""}</b></li>
-          <li><span>Phone</span><b>{contact.phone || ""}</b></li>
-          <li><span>Job title</span><b>{contact.job_title || ""}</b></li>
+          <li>
+            <span>Status</span>
+            <span className="chip" style={markStyle(contact.status as MarkName)}>
+              {contact.status}
+            </span>
+          </li>
+          <li>
+            <span>Email</span>
+            <b>{contact.email || ""}</b>
+          </li>
+          <li>
+            <span>Phone</span>
+            <b>{contact.phone || ""}</b>
+          </li>
+          <li>
+            <span>Job title</span>
+            <b>{contact.job_title || ""}</b>
+          </li>
           <li>
             <span>Organization</span>
-            {contact.organization_id ? <Link to={`/organizations/${contact.organization_id}`}>{contact.organization_name}</Link> : <b>No organization</b>}
+            {contact.organization_id ? (
+              <Link to={`/organizations/${contact.organization_id}`}>
+                {contact.organization_name}
+              </Link>
+            ) : (
+              <b>No organization</b>
+            )}
           </li>
         </ul>
       </section>
       <section className="panel stack">
         <h2>Deals</h2>
-        {contact.deals.length === 0 ? <p className="empty">There are no records yet.</p> : (
+        {contact.deals.length === 0 ? (
+          <p className="empty">There are no records yet.</p>
+        ) : (
           <ul className="facts">
             {contact.deals.map((deal) => (
               <li key={deal.id}>
@@ -90,7 +118,10 @@ export function ContactPage() {
           initial={contact}
           organizations={organizations}
           onCancel={() => setEditing(false)}
-          onSaved={() => { setEditing(false); void load() }}
+          onSaved={() => {
+            setEditing(false)
+            void load()
+          }}
         />
       ) : null}
       {removing ? (
@@ -101,7 +132,10 @@ export function ContactPage() {
           onCancel={() => setRemoving(false)}
           onConfirm={() => {
             setBusy(true)
-            void api.deleteContact(contact.id).then(() => navigate("/contacts")).catch(() => setBusy(false))
+            void api
+              .deleteContact(contact.id)
+              .then(() => navigate("/contacts"))
+              .catch(() => setBusy(false))
           }}
         />
       ) : null}

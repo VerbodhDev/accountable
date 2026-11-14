@@ -1,10 +1,6 @@
 import { spawnSync } from "node:child_process"
 
-const commands = [
-  "uv run --group dev pytest",
-  "npm test -w frontend",
-  "npx playwright test",
-]
+const commands = ["uv run --group dev pytest", "npm test -w frontend", "npx playwright test"]
 
 let code = 0
 for (const command of commands) {

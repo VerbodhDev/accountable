@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { api, type Contact, type Deal, type Organization } from "../../lib/api"
 import { Board } from "../Board"
 import { DealForm } from "../Forms"
@@ -13,19 +13,21 @@ export function PipelinePage() {
   const [loaded, setLoaded] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
 
-  async function load() {
-    try {
-      setError(false)
-      const data = await api.deals()
-      setDeals(data.items)
-      setToday(data.today)
-      setLoaded(true)
-    } catch {
-      setError(true)
-    }
-  }
+  const load = useCallback(() => {
+    return api
+      .deals()
+      .then((data) => {
+        setError(false)
+        setDeals(data.items)
+        setToday(data.today)
+        setLoaded(true)
+      })
+      .catch(() => setError(true))
+  }, [])
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+  }, [load])
 
   async function openAdd(nextStage: string) {
     const [orgs, people] = await Promise.all([api.organizations(), api.contacts()])
@@ -38,14 +40,21 @@ export function PipelinePage() {
     <>
       <PageHeading title="Pipeline" />
       {error ? <LoadError /> : null}
-      {loaded ? <Board deals={deals} today={today} onReload={load} onAdd={(next) => void openAdd(next)} /> : error ? null : <p>Loading records.</p>}
+      {loaded ? (
+        <Board deals={deals} today={today} onReload={load} onAdd={(next) => void openAdd(next)} />
+      ) : error ? null : (
+        <p>Loading records.</p>
+      )}
       {stage ? (
         <DealForm
           organizations={organizations}
           contacts={contacts}
           defaultStage={stage}
           onCancel={() => setStage(null)}
-          onSaved={() => { setStage(null); void load() }}
+          onSaved={() => {
+            setStage(null)
+            void load()
+          }}
         />
       ) : null}
     </>

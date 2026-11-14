@@ -1,7 +1,15 @@
-import { DndContext, PointerSensor, closestCorners, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import {
+  DndContext,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { api, type Deal } from "../lib/api"
 import { shortDate } from "../lib/format"
@@ -13,11 +21,18 @@ function byPosition(left: Deal, right: Deal): number {
   return left.position - right.position || left.id - right.id
 }
 
-function dropTarget(deals: Deal[], deal: Deal, overId: string): { stage: string; position: number } | null {
+function dropTarget(
+  deals: Deal[],
+  deal: Deal,
+  overId: string,
+): { stage: string; position: number } | null {
   if (overId.startsWith("stage:")) {
     const stage = overId.slice("stage:".length)
     if (!STAGES.some((item) => item === stage)) return null
-    return { stage, position: deals.filter((item) => item.stage === stage && item.id !== deal.id).length }
+    return {
+      stage,
+      position: deals.filter((item) => item.stage === stage && item.id !== deal.id).length,
+    }
   }
   const over = deals.find((item) => item.id === Number(overId))
   if (!over) return null
@@ -26,7 +41,9 @@ function dropTarget(deals: Deal[], deal: Deal, overId: string): { stage: string;
     // Same-column index includes this card, matching remove-then-insert.
     return { stage: deal.stage, position: column.findIndex((item) => item.id === over.id) }
   }
-  const dest = deals.filter((item) => item.stage === over.stage && item.id !== deal.id).sort(byPosition)
+  const dest = deals
+    .filter((item) => item.stage === over.stage && item.id !== deal.id)
+    .sort(byPosition)
   return { stage: over.stage, position: dest.findIndex((item) => item.id === over.id) }
 }
 
@@ -35,8 +52,12 @@ function applyMove(deals: Deal[], id: number, stage: string, position: number): 
   const moving = next.find((deal) => deal.id === id)
   if (!moving) return deals
   if (moving.stage !== stage) {
-    const origin = next.filter((deal) => deal.stage === moving.stage && deal.id !== id).sort(byPosition)
-    origin.forEach((deal, index) => { deal.position = index })
+    const origin = next
+      .filter((deal) => deal.stage === moving.stage && deal.id !== id)
+      .sort(byPosition)
+    origin.forEach((deal, index) => {
+      deal.position = index
+    })
     moving.probability = USUAL_PROBABILITY[stage] ?? moving.probability
     moving.probability_hand_set = false
     moving.expected_cents = Math.trunc((moving.value_cents * moving.probability) / 100)
@@ -45,7 +66,9 @@ function applyMove(deals: Deal[], id: number, stage: string, position: number): 
   const index = Math.max(0, Math.min(position, dest.length))
   moving.stage = stage
   dest.splice(index, 0, moving)
-  dest.forEach((deal, itemIndex) => { deal.position = itemIndex })
+  dest.forEach((deal, itemIndex) => {
+    deal.position = itemIndex
+  })
   return next
 }
 
@@ -62,8 +85,14 @@ function DealCard({ deal, today }: { deal: Deal; today: string }) {
       {...listeners}
     >
       <h3>
-        <Link to={`/deals/${deal.id}`} onPointerDown={(event) => event.stopPropagation()}>{deal.name}</Link>
-        {late ? <span className="pill" style={markStyle("Late")}>Late</span> : null}
+        <Link to={`/deals/${deal.id}`} onPointerDown={(event) => event.stopPropagation()}>
+          {deal.name}
+        </Link>
+        {late ? (
+          <span className="pill" style={markStyle("Late")}>
+            Late
+          </span>
+        ) : null}
       </h3>
       <p>{deal.organization_name}</p>
       <p className="meta">
@@ -74,22 +103,44 @@ function DealCard({ deal, today }: { deal: Deal; today: string }) {
   )
 }
 
-function Column({ stage, deals, today, onAdd }: { stage: string; deals: Deal[]; today: string; onAdd: (stage: string) => void }) {
+function Column({
+  stage,
+  deals,
+  today,
+  onAdd,
+}: {
+  stage: string
+  deals: Deal[]
+  today: string
+  onAdd: (stage: string) => void
+}) {
   const { setNodeRef } = useDroppable({ id: `stage:${stage}` })
   const value = deals.reduce((sum, deal) => sum + deal.value_cents, 0)
   const expected = deals.reduce((sum, deal) => sum + deal.expected_cents, 0)
   return (
     <section ref={setNodeRef} className="col" data-testid={`column-${stage}`}>
       <div className="col-name">
-        <span className="chip" style={{ background: STAGE_COLOR[stage], color: stageInk(stage) }}>{stage}</span>
+        <span className="chip" style={{ background: STAGE_COLOR[stage], color: stageInk(stage) }}>
+          {stage}
+        </span>
         <span className="count">{deals.length}</span>
       </div>
-      <p className="sums"><span>Value</span><b>{money(value)}</b></p>
-      <p className="sums"><span>Expected</span><b>{money(expected)}</b></p>
+      <p className="sums">
+        <span>Value</span>
+        <b>{money(value)}</b>
+      </p>
+      <p className="sums">
+        <span>Expected</span>
+        <b>{money(expected)}</b>
+      </p>
       <SortableContext items={deals.map((deal) => deal.id)} strategy={verticalListSortingStrategy}>
-        {deals.map((deal) => <DealCard key={deal.id} deal={deal} today={today} />)}
+        {deals.map((deal) => (
+          <DealCard key={deal.id} deal={deal} today={today} />
+        ))}
       </SortableContext>
-      <button type="button" className="primary add" onClick={() => onAdd(stage)}>Add deal</button>
+      <button type="button" className="primary add" onClick={() => onAdd(stage)}>
+        Add deal
+      </button>
     </section>
   )
 }
@@ -106,10 +157,14 @@ export function Board({
   onAdd: (stage: string) => void
 }) {
   const [items, setItems] = useState(deals)
+  const [seen, setSeen] = useState(deals)
   const [moveError, setMoveError] = useState("")
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
-  useEffect(() => { setItems(deals) }, [deals])
+  if (seen !== deals) {
+    setSeen(deals)
+    setItems(deals)
+  }
 
   function onDragEnd(event: DragEndEvent) {
     if (!event.over) return
@@ -121,10 +176,13 @@ export function Board({
     const previous = items
     setItems(applyMove(items, activeId, target.stage, target.position))
     setMoveError("")
-    void api.updateDeal(activeId, { stage: target.stage, position: target.position }).then(() => onReload()).catch(() => {
-      setItems(previous)
-      setMoveError("Could not save the move.")
-    })
+    void api
+      .updateDeal(activeId, { stage: target.stage, position: target.position })
+      .then(() => onReload())
+      .catch(() => {
+        setItems(previous)
+        setMoveError("Could not save the move.")
+      })
   }
 
   const open = items.filter((deal) => isOpenStage(deal.stage))
@@ -136,14 +194,22 @@ export function Board({
       <div className="board-head panel">
         <div>
           <p className="k">Open pipeline</p>
-          <p className="v" data-testid="pipeline-open">{money(openCents)}</p>
+          <p className="v" data-testid="pipeline-open">
+            {money(openCents)}
+          </p>
         </div>
         <div>
           <p className="k">Expected revenue</p>
-          <p className="v" data-testid="pipeline-expected">{money(expectedCents)}</p>
+          <p className="v" data-testid="pipeline-expected">
+            {money(expectedCents)}
+          </p>
         </div>
       </div>
-      {moveError ? <p className="panel banner" role="alert">{moveError}</p> : null}
+      {moveError ? (
+        <p className="panel banner" role="alert">
+          {moveError}
+        </p>
+      ) : null}
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
         <div className="board">
           {STAGES.map((stage) => (

@@ -48,10 +48,11 @@ def init_database(path: Path) -> None:
 
 
 def reset_database(path: Path) -> None:
-    from accountable.crm.seed import insert_sample
-    from accountable.crm.tables import activities, contacts, deals, organizations as orgs
-    from accountable.crm.tables import stage_entries
     from sqlalchemy import delete
+
+    from accountable.crm.seed import insert_sample
+    from accountable.crm.tables import activities, contacts, deals, stage_entries
+    from accountable.crm.tables import organizations as orgs
 
     engine = get_engine(path)
     metadata.create_all(engine)

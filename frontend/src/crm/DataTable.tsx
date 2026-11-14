@@ -33,7 +33,8 @@ export function DataTable<T>({
             {group.headers.map((header) => {
               const id = header.column.id
               const canSort = sortable.includes(id)
-              const ariaSort = id === sort.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"
+              const ariaSort =
+                id === sort.id ? (sort.dir === "asc" ? "ascending" : "descending") : "none"
               return (
                 <th key={header.id} aria-sort={canSort ? ariaSort : undefined}>
                   {canSort ? (
@@ -52,7 +53,9 @@ export function DataTable<T>({
       <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td className="empty" colSpan={columns.length}>{empty}</td>
+            <td className="empty" colSpan={columns.length}>
+              {empty}
+            </td>
           </tr>
         ) : (
           table.getRowModel().rows.map((row) => (

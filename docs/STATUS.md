@@ -4,7 +4,9 @@ CRM code sits in the accountable.crm package. The database module sits beside it
 
 Run npm run dev from the repo root. The site opens at http://127.0.0.1:5173. The API listens at http://127.0.0.1:8000. There is no password.
 
-Run npm test to run pytest, Vitest, and Playwright. The command fails if any test fails. Playwright uses the installed Google Chrome and its own database file.
+Run npm run check before calling work finished. It runs Prettier, ESLint, ruff format, ruff check, tsc, ty, and gitleaks, then pytest, Vitest, and Playwright. Unit coverage must be at least 80 percent. The command fails if any check fails. npm run check:quick skips Playwright. npm run format fixes formatting. npm test still runs the three test suites. Playwright uses the installed Google Chrome and its own database file. Coverage is enforced by npm run check.
+
+ESLint warns on TanStack Table's useReactTable. The table stays, because the product uses that library. The warning does not fail the check.
 
 Run npm run seed to replace every row with the sample set. Seed does not ask first. A missing database is created and filled on the first start. A later start leaves the existing file as it is.
 

@@ -12,7 +12,11 @@ export function markStyle(name: MarkName): { background: string; color: string }
   return { background: MARKS[name].background, color: MARKS[name].color }
 }
 
-export function isLate(stage: string, closeDate: string | null | undefined, today: string): boolean {
+export function isLate(
+  stage: string,
+  closeDate: string | null | undefined,
+  today: string,
+): boolean {
   if (stage === "Won" || stage === "Lost" || !closeDate) return false
   return closeDate.slice(0, 10) < today
 }

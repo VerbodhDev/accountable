@@ -79,7 +79,12 @@ export type Task = FollowUp & {
 }
 
 export type MonthPoint = { key: string; label: string; cents: number; count: number }
-export type OpenStage = { stage: string; count: number; value_cents: number; expected_cents: number }
+export type OpenStage = {
+  stage: string
+  count: number
+  value_cents: number
+  expected_cents: number
+}
 
 export type Dashboard = {
   today: string
@@ -137,7 +142,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         if (detail && typeof detail === "object") {
           throw new ApiError(response.status, detail.message || "Check this field", detail.field)
         }
-        throw new ApiError(response.status, typeof detail === "string" ? detail : "Could not load records.")
+        throw new ApiError(
+          response.status,
+          typeof detail === "string" ? detail : "Could not load records.",
+        )
       }
       return body as T
     } catch (error) {
@@ -173,15 +181,19 @@ function withQuery(path: string, params: Query): string {
 
 export const api = {
   dashboard: () => request<Dashboard>("/api/dashboard"),
-  organizations: (query: Query = {}) => request<List<Organization>>(withQuery("/api/organizations", query)),
+  organizations: (query: Query = {}) =>
+    request<List<Organization>>(withQuery("/api/organizations", query)),
   organization: (id: number) => request<OrganizationDetail>(`/api/organizations/${id}`),
-  createOrganization: (body: Partial<Organization>) => send<Organization>("/api/organizations", "POST", body),
-  updateOrganization: (id: number, body: Partial<Organization>) => send<Organization>(`/api/organizations/${id}`, "PATCH", body),
+  createOrganization: (body: Partial<Organization>) =>
+    send<Organization>("/api/organizations", "POST", body),
+  updateOrganization: (id: number, body: Partial<Organization>) =>
+    send<Organization>(`/api/organizations/${id}`, "PATCH", body),
   deleteOrganization: (id: number) => send<void>(`/api/organizations/${id}`, "DELETE"),
   contacts: (query: Query = {}) => request<List<Contact>>(withQuery("/api/contacts", query)),
   contact: (id: number) => request<ContactDetail>(`/api/contacts/${id}`),
   createContact: (body: Partial<Contact>) => send<ContactDetail>("/api/contacts", "POST", body),
-  updateContact: (id: number, body: Partial<Contact>) => send<ContactDetail>(`/api/contacts/${id}`, "PATCH", body),
+  updateContact: (id: number, body: Partial<Contact>) =>
+    send<ContactDetail>(`/api/contacts/${id}`, "PATCH", body),
   deleteContact: (id: number) => send<void>(`/api/contacts/${id}`, "DELETE"),
   deals: (query: Query = {}) => request<List<Deal>>(withQuery("/api/deals", query)),
   deal: (id: number) => request<DealDetail>(`/api/deals/${id}`),
@@ -189,7 +201,8 @@ export const api = {
   updateDeal: (id: number, body: DealBody) => send<DealDetail>(`/api/deals/${id}`, "PATCH", body),
   deleteDeal: (id: number) => send<void>(`/api/deals/${id}`, "DELETE"),
   createActivity: (body: ActivityBody) => send<TimelineItem>("/api/activities", "POST", body),
-  updateActivity: (id: number, body: ActivityBody) => send<TimelineItem>(`/api/activities/${id}`, "PATCH", body),
+  updateActivity: (id: number, body: ActivityBody) =>
+    send<TimelineItem>(`/api/activities/${id}`, "PATCH", body),
   deleteActivity: (id: number) => send<void>(`/api/activities/${id}`, "DELETE"),
   deleteStageEntry: (id: number) => send<void>(`/api/stage-entries/${id}`, "DELETE"),
 }

@@ -1,16 +1,27 @@
 {
   "name": "accountable",
   "private": true,
+  "type": "module",
   "workspaces": [
     "frontend"
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node scripts/test.mjs",
+    "check": "node scripts/check.mjs",
+    "check:quick": "node scripts/check.mjs --quick",
+    "format": "prettier --write frontend scripts e2e playwright.config.ts eslint.config.js && uv run --group dev ruff format backend",
     "seed": "node scripts/seed.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.55.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.10.1",
+    "typescript-eslint": "^8.72.2"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

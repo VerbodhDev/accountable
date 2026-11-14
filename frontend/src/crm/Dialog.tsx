@@ -1,23 +1,34 @@
 import type { ReactNode } from "react"
 
-export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Dialog({
+  title,
+  onClose,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+}) {
   return (
-    <div className="backdrop" onMouseDown={onClose}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+    <>
+      <button type="button" className="backdrop" aria-label="Close" onClick={onClose} />
+      <div className="dialog" role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
       </div>
-    </div>
+    </>
   )
 }
 
-export function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+export function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string
+  error?: string
+  children: ReactNode
+}) {
   return (
     <label className="field">
       <span>{label}</span>
@@ -44,8 +55,12 @@ export function ConfirmDialog({
     <Dialog title={title} onClose={onCancel}>
       <p>{body}</p>
       <div className="actions">
-        <button type="button" className="quiet" onClick={onCancel}>Cancel</button>
-        <button type="button" className="danger" onClick={onConfirm} disabled={busy}>Delete</button>
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="danger" onClick={onConfirm} disabled={busy}>
+          Delete
+        </button>
       </div>
     </Dialog>
   )

@@ -9,7 +9,9 @@ def test_bad_field_missing_and_delete(api):
     assert bad.json()["detail"]["field"] == "name"
     missing = client.get("/api/organizations/999999")
     assert missing.status_code == 404
-    created = client.post("/api/organizations", json={"name": "Practice Co", "website": "https://practice.example"}).json()
+    created = client.post(
+        "/api/organizations", json={"name": "Practice Co", "website": "https://practice.example"}
+    ).json()
     removed = client.delete(f"/api/organizations/{created['id']}")
     assert removed.status_code == 204
     assert client.get(f"/api/organizations/{created['id']}").status_code == 404
@@ -62,11 +64,24 @@ def test_list_search_and_sort(api):
     priya = client.get("/api/contacts", params={"q": "priya"}).json()["items"]
     assert any(row["name"] == "Priya Shah" for row in priya)
     by_org = client.get("/api/contacts", params={"q": "bakery"}).json()["items"]
-    assert by_org and all("Northwind" in (row["organization_name"] or "") or "bakery" in row["name"].lower() for row in by_org)
+    assert by_org and all(
+        "Northwind" in (row["organization_name"] or "") or "bakery" in row["name"].lower()
+        for row in by_org
+    )
     deals = client.get("/api/deals", params={"q": "Priya"}).json()["items"]
     assert any(row["name"] == "Clinic portal" for row in deals)
-    asc = [row["name"] for row in client.get("/api/organizations", params={"sort": "name", "dir": "asc"}).json()["items"]]
-    desc = [row["name"] for row in client.get("/api/organizations", params={"sort": "name", "dir": "desc"}).json()["items"]]
+    asc = [
+        row["name"]
+        for row in client.get("/api/organizations", params={"sort": "name", "dir": "asc"}).json()[
+            "items"
+        ]
+    ]
+    desc = [
+        row["name"]
+        for row in client.get("/api/organizations", params={"sort": "name", "dir": "desc"}).json()[
+            "items"
+        ]
+    ]
     assert asc == sorted(asc)
     assert desc == list(reversed(asc))
     default_deals = client.get("/api/deals").json()["items"]
@@ -82,20 +97,36 @@ def test_list_search_and_sort(api):
 
 def test_main_contact_and_org_move(api):
     client, _path = api
-    bright = next(row for row in _items(client, "/api/organizations") if row["name"] == "Brightpath Software")
-    lumen = next(row for row in _items(client, "/api/organizations") if row["name"] == "Lumen Clinic")
+    bright = next(
+        row for row in _items(client, "/api/organizations") if row["name"] == "Brightpath Software"
+    )
+    lumen = next(
+        row for row in _items(client, "/api/organizations") if row["name"] == "Lumen Clinic"
+    )
     priya = next(row for row in _items(client, "/api/contacts") if row["name"] == "Priya Shah")
     bad = client.post(
         "/api/deals",
-        json={"name": "Mismatch", "organization_id": bright["id"], "contact_id": priya["id"], "value": "10"},
+        json={
+            "name": "Mismatch",
+            "organization_id": bright["id"],
+            "contact_id": priya["id"],
+            "value": "10",
+        },
     )
     assert bad.status_code == 422
     assert bad.json()["detail"]["field"] == "contact_id"
     created = client.post(
         "/api/deals",
-        json={"name": "Mismatch", "organization_id": lumen["id"], "contact_id": priya["id"], "value": "10"},
+        json={
+            "name": "Mismatch",
+            "organization_id": lumen["id"],
+            "contact_id": priya["id"],
+            "value": "10",
+        },
     ).json()
-    moved = client.patch(f"/api/deals/{created['id']}", json={"organization_id": bright["id"]}).json()
+    moved = client.patch(
+        f"/api/deals/{created['id']}", json={"organization_id": bright["id"]}
+    ).json()
     assert moved["organization_id"] == bright["id"]
     assert moved["contact_id"] is None
 
@@ -107,7 +138,11 @@ def test_new_contact_is_lead_and_optional_org(api):
     assert created["organization_id"] is None
     negative = client.post(
         "/api/deals",
-        json={"name": "Below zero", "organization_id": created["id"] and _items(client, "/api/organizations")[0]["id"], "value": "-1"},
+        json={
+            "name": "Below zero",
+            "organization_id": created["id"] and _items(client, "/api/organizations")[0]["id"],
+            "value": "-1",
+        },
     )
     assert negative.status_code == 422
     assert negative.json()["detail"]["field"] == "value"

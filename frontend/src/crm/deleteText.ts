@@ -6,13 +6,23 @@ function list(names: string[], empty: string, sentence: string): string {
 }
 
 export function organizationDeleteText(org: OrganizationDetail): string {
-  const contacts = list(org.contacts.map((item) => item.name), "No contacts are linked.", "These contacts are deleted")
-  const deals = list(org.deals.map((item) => item.name), "No deals are linked.", "These deals are deleted")
+  const contacts = list(
+    org.contacts.map((item) => item.name),
+    "No contacts are linked.",
+    "These contacts are deleted",
+  )
+  const deals = list(
+    org.deals.map((item) => item.name),
+    "No deals are linked.",
+    "These deals are deleted",
+  )
   return `Delete ${org.name}? ${contacts} ${deals} Their activities and stage entries are deleted too.`
 }
 
 export function contactDeleteText(contact: ContactDetail): string {
-  const own = contact.timeline.filter((item) => item.kind === "activity" && item.contact_id === contact.id && !item.deal_id)
+  const own = contact.timeline.filter(
+    (item) => item.kind === "activity" && item.contact_id === contact.id && !item.deal_id,
+  )
   const activities = list(
     own.map((item) => item.description || item.title),
     "No activities are linked to this contact.",
@@ -28,7 +38,9 @@ export function contactDeleteText(contact: ContactDetail): string {
 
 export function dealDeleteText(deal: DealDetail): string {
   const activities = list(
-    deal.timeline.filter((item) => item.kind === "activity").map((item) => item.description || item.title),
+    deal.timeline
+      .filter((item) => item.kind === "activity")
+      .map((item) => item.description || item.title),
     "No activities are linked.",
     "These activities are deleted",
   )

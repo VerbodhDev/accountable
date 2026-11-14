@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { ApiError, api, type OrganizationDetail } from "../../lib/api"
 import { websiteHref } from "../../lib/format"
@@ -22,55 +22,81 @@ export function OrganizationPage() {
   const [removing, setRemoving] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  async function load() {
-    if (!Number.isInteger(orgId)) {
-      setMissing(true)
-      return
-    }
-    try {
-      setError(false)
-      setMissing(false)
-      setOrg(await api.organization(orgId))
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 404) setMissing(true)
-      else setError(true)
-    }
-  }
+  const load = useCallback(() => {
+    return api
+      .organization(orgId)
+      .then((row) => {
+        setError(false)
+        setMissing(false)
+        setOrg(row)
+      })
+      .catch((caught: unknown) => {
+        if (caught instanceof ApiError && caught.status === 404) setMissing(true)
+        else setError(true)
+      })
+  }, [orgId])
 
-  useEffect(() => { void load() }, [orgId])
+  useEffect(() => {
+    if (!Number.isInteger(orgId)) return
+    void load()
+  }, [orgId, load])
 
-  if (missing) return <Missing />
+  if (!Number.isInteger(orgId) || missing) return <Missing />
   if (error) return <LoadError />
   if (!org) return <p>Loading records.</p>
 
   return (
     <>
       <PageHeading title={org.name}>
-        <button type="button" className="quiet" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" className="quiet" onClick={() => setRemoving(true)}>Delete</button>
+        <button type="button" className="quiet" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+        <button type="button" className="quiet" onClick={() => setRemoving(true)}>
+          Delete
+        </button>
       </PageHeading>
       <section className="panel">
         <ul className="facts">
-          <li><span>Industry</span><b>{org.industry || ""}</b></li>
+          <li>
+            <span>Industry</span>
+            <b>{org.industry || ""}</b>
+          </li>
           <li>
             <span>Website</span>
-            {org.website ? <a href={websiteHref(org.website)} target="_blank" rel="noreferrer">{org.website}</a> : <b></b>}
+            {org.website ? (
+              <a href={websiteHref(org.website)} target="_blank" rel="noreferrer">
+                {org.website}
+              </a>
+            ) : (
+              <b></b>
+            )}
           </li>
-          {org.notes ? <li><span>Notes</span><b>{org.notes}</b></li> : null}
+          {org.notes ? (
+            <li>
+              <span>Notes</span>
+              <b>{org.notes}</b>
+            </li>
+          ) : null}
         </ul>
       </section>
       <section className="stack">
         <section className="panel">
           <div className="page-head">
             <h2>Contacts</h2>
-            <button type="button" className="primary" onClick={() => setAddingContact(true)}>Add contact</button>
+            <button type="button" className="primary" onClick={() => setAddingContact(true)}>
+              Add contact
+            </button>
           </div>
-          {org.contacts.length === 0 ? <p className="empty">There are no records yet.</p> : (
+          {org.contacts.length === 0 ? (
+            <p className="empty">There are no records yet.</p>
+          ) : (
             <ul className="facts">
               {org.contacts.map((contact) => (
                 <li key={contact.id}>
                   <Link to={`/contacts/${contact.id}`}>{contact.name}</Link>
-                  <span className="chip" style={markStyle(contact.status as MarkName)}>{contact.status}</span>
+                  <span className="chip" style={markStyle(contact.status as MarkName)}>
+                    {contact.status}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -79,9 +105,13 @@ export function OrganizationPage() {
         <section className="panel">
           <div className="page-head">
             <h2>Deals</h2>
-            <button type="button" className="primary" onClick={() => setAddingDeal(true)}>Add deal</button>
+            <button type="button" className="primary" onClick={() => setAddingDeal(true)}>
+              Add deal
+            </button>
           </div>
-          {org.deals.length === 0 ? <p className="empty">There are no records yet.</p> : (
+          {org.deals.length === 0 ? (
+            <p className="empty">There are no records yet.</p>
+          ) : (
             <ul className="facts">
               {org.deals.map((deal) => (
                 <li key={deal.id}>
@@ -93,14 +123,26 @@ export function OrganizationPage() {
           )}
         </section>
       </section>
-      {editing ? <OrganizationForm initial={org} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); void load() }} /> : null}
+      {editing ? (
+        <OrganizationForm
+          initial={org}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            void load()
+          }}
+        />
+      ) : null}
       {addingContact ? (
         <ContactForm
           organizations={[org]}
           organizationId={org.id}
           lockOrganization
           onCancel={() => setAddingContact(false)}
-          onSaved={() => { setAddingContact(false); void load() }}
+          onSaved={() => {
+            setAddingContact(false)
+            void load()
+          }}
         />
       ) : null}
       {addingDeal ? (
@@ -110,7 +152,10 @@ export function OrganizationPage() {
           organizationId={org.id}
           lockOrganization
           onCancel={() => setAddingDeal(false)}
-          onSaved={() => { setAddingDeal(false); void load() }}
+          onSaved={() => {
+            setAddingDeal(false)
+            void load()
+          }}
         />
       ) : null}
       {removing ? (
@@ -121,7 +166,10 @@ export function OrganizationPage() {
           onCancel={() => setRemoving(false)}
           onConfirm={() => {
             setBusy(true)
-            void api.deleteOrganization(org.id).then(() => navigate("/organizations")).catch(() => setBusy(false))
+            void api
+              .deleteOrganization(org.id)
+              .then(() => navigate("/organizations"))
+              .catch(() => setBusy(false))
           }}
         />
       ) : null}

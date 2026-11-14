@@ -74,20 +74,30 @@ export function Timeline({
               <div>
                 <strong>{item.kind === "stage" ? item.title : item.type}</strong>
                 {item.kind === "activity" ? <p>{item.description}</p> : null}
-                {item.kind === "activity" && item.follow_up_date ? <p>Follow-up {shortDate(item.follow_up_date)}</p> : null}
+                {item.kind === "activity" && item.follow_up_date ? (
+                  <p>Follow-up {shortDate(item.follow_up_date)}</p>
+                ) : null}
                 {item.kind === "activity" && item.done ? <p>Done</p> : null}
                 {item.record_type === "deal" && contactId ? (
-                  <p><Link to={`/deals/${item.record_id}`}>{item.record_name}</Link></p>
+                  <p>
+                    <Link to={`/deals/${item.record_id}`}>{item.record_name}</Link>
+                  </p>
                 ) : null}
               </div>
               <div className="actions">
                 {item.kind === "activity" && !item.done ? (
-                  <button type="button" className="primary" onClick={() => void markDone(item)}>Mark done</button>
+                  <button type="button" className="primary" onClick={() => void markDone(item)}>
+                    Mark done
+                  </button>
                 ) : null}
                 {item.kind === "activity" ? (
-                  <button type="button" className="quiet" onClick={() => setEditing(item)}>Edit</button>
+                  <button type="button" className="quiet" onClick={() => setEditing(item)}>
+                    Edit
+                  </button>
                 ) : null}
-                <button type="button" className="quiet" onClick={() => setRemoving(item)}>Delete</button>
+                <button type="button" className="quiet" onClick={() => setRemoving(item)}>
+                  Delete
+                </button>
               </div>
             </li>
           ))}
@@ -103,18 +113,34 @@ export function Timeline({
               <option>Email</option>
             </select>
           </Field>
-          <Field label="Description" error={field === "description" || field === "parent" ? error : undefined}>
+          <Field
+            label="Description"
+            error={field === "description" || field === "parent" ? error : undefined}
+          >
             <input value={description} onChange={(event) => setDescription(event.target.value)} />
           </Field>
           <Field label="Follow-up date" error={field === "follow_up_date" ? error : undefined}>
-            <input type="date" value={followUp} onChange={(event) => setFollowUp(event.target.value)} />
+            <input
+              type="date"
+              value={followUp}
+              onChange={(event) => setFollowUp(event.target.value)}
+            />
           </Field>
           {error && !field ? <p className="field-error">{error}</p> : null}
-          <button type="submit" className="primary" disabled={busy}>Log</button>
+          <button type="submit" className="primary" disabled={busy}>
+            Log
+          </button>
         </form>
       </section>
       {editing ? (
-        <ActivityEdit item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChange() }} />
+        <ActivityEdit
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            onChange()
+          }}
+        />
       ) : null}
       {removing ? (
         <ConfirmDialog
@@ -124,12 +150,17 @@ export function Timeline({
           onCancel={() => setRemoving(null)}
           onConfirm={() => {
             setBusy(true)
-            const action = removing.kind === "stage" ? api.deleteStageEntry(removing.id) : api.deleteActivity(removing.id)
-            void action.then(() => {
-              setRemoving(null)
-              setBusy(false)
-              onChange()
-            }).catch(() => setBusy(false))
+            const action =
+              removing.kind === "stage"
+                ? api.deleteStageEntry(removing.id)
+                : api.deleteActivity(removing.id)
+            void action
+              .then(() => {
+                setRemoving(null)
+                setBusy(false)
+                onChange()
+              })
+              .catch(() => setBusy(false))
           }}
         />
       ) : null}
@@ -137,7 +168,15 @@ export function Timeline({
   )
 }
 
-function ActivityEdit({ item, onClose, onSaved }: { item: TimelineItem; onClose: () => void; onSaved: () => void }) {
+function ActivityEdit({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: TimelineItem
+  onClose: () => void
+  onSaved: () => void
+}) {
   const [type, setType] = useState(item.type || "Note")
   const [description, setDescription] = useState(item.description || "")
   const [followUp, setFollowUp] = useState(item.follow_up_date || "")
@@ -152,7 +191,8 @@ function ActivityEdit({ item, onClose, onSaved }: { item: TimelineItem; onClose:
       await api.updateActivity(item.id, { type, description, follow_up_date: followUp || null })
       onSaved()
     } catch (caught) {
-      if (caught instanceof ApiError) setError({ field: caught.field || "", message: caught.message })
+      if (caught instanceof ApiError)
+        setError({ field: caught.field || "", message: caught.message })
       else setError({ field: "", message: "Could not load records." })
       setBusy(false)
     }
@@ -168,15 +208,29 @@ function ActivityEdit({ item, onClose, onSaved }: { item: TimelineItem; onClose:
             <option>Email</option>
           </select>
         </Field>
-        <Field label="Description" error={error?.field === "description" ? error.message : undefined}>
+        <Field
+          label="Description"
+          error={error?.field === "description" ? error.message : undefined}
+        >
           <input value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
-        <Field label="Follow-up date" error={error?.field === "follow_up_date" ? error.message : undefined}>
-          <input type="date" value={followUp} onChange={(event) => setFollowUp(event.target.value)} />
+        <Field
+          label="Follow-up date"
+          error={error?.field === "follow_up_date" ? error.message : undefined}
+        >
+          <input
+            type="date"
+            value={followUp}
+            onChange={(event) => setFollowUp(event.target.value)}
+          />
         </Field>
         <div className="actions">
-          <button type="button" className="quiet" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary" disabled={busy}>Save</button>
+          <button type="button" className="quiet" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={busy}>
+            Save
+          </button>
         </div>
       </form>
     </Dialog>
