@@ -10,6 +10,8 @@ import { OrganizationPage } from "./crm/pages/OrganizationPage"
 import { OrganizationsPage } from "./crm/pages/OrganizationsPage"
 import { PipelinePage } from "./crm/pages/PipelinePage"
 import { Missing, Shell } from "./shell/Shell"
+import { SignIn } from "./shell/SignIn"
+import { SessionProvider, useSession } from "./shell/session"
 import { applyTheme, readTheme } from "./shell/theme"
 import "./styles.css"
 
@@ -33,8 +35,21 @@ const router = createBrowserRouter([
   },
 ])
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
-)
+function Gate() {
+  const { user } = useSession()
+  if (!user) return <SignIn />
+  return <RouterProvider router={router} />
+}
+
+export function App() {
+  return (
+    <StrictMode>
+      <SessionProvider>
+        <Gate />
+      </SessionProvider>
+    </StrictMode>
+  )
+}
+
+const root = document.getElementById("root")
+if (root) createRoot(root).render(<App />)

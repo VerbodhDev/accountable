@@ -1,6 +1,6 @@
 ## Not in this version
 
-Roles and permissions. Google sign-in, magic links, and password reset. Copying the local SQLite file into Supabase. Running the backend on another computer. A phone layout. AI features. Email, calendar, or phone integrations. A currency other than US dollars. Reports beyond the dashboard. Tags or custom fields. Editing the stage list. Import or export.
+Roles and permissions. Google sign-in, magic links, and password reset. Copying the local SQLite file into Supabase. Running the backend on another computer. AI features. Email, calendar, or phone integrations. A currency other than US dollars. Reports beyond the dashboard. Tags or custom fields. Editing the stage list. Import or export.
 
 ## Requirement IDs
 
@@ -68,7 +68,7 @@ Each ID is one requirement of the product. The area files state the same require
 | S58 | Overdue follow-ups are every undone one before today, oldest first. Upcoming ones are today through 7 days, soonest first. A later one stays on the record only |
 | S59 | Each task shows the description, the contact or deal, the date, and Mark done. Overdue tasks show an Overdue mark |
 | S60 | The dashboard layout is the figures mockup. The other two mockups are not the design |
-| S61 | Light mode is the default. The initials menu offers Light, Dark, and System. This browser remembers the choice. System follows the device. A narrow window scrolls. It does not become a phone page |
+| S61 | Light mode is the default. The initials menu offers Light, Dark, and System. This browser remembers the choice. System follows the device. Below 900px the page uses the phone layout. The page itself does not scroll sideways |
 | S62 | Light page background `#F0F4F5` with white panels. Dark page background `#04232E` with black panels. Panels are rounded and have no outline. Instrument Sans. JetBrains Mono for money, dates, and counts. No Instrument Serif |
 | S63 | Light ink is Midnight. Dark ink is Sea Mist. A primary action is Sea Green with Midnight text in both modes. A destructive confirm is Raspberry with white text |
 | S64 | Sea Green and Marigold are not used for small text. Text on Sea Green, Marigold, or Coral stays Midnight in both modes. No border on one edge. No line across the top. No gradient fills |
@@ -92,7 +92,7 @@ Each ID is one requirement of the product. The area files state the same require
 | S82 | Tables use TanStack Table. Charts use Recharts. The board uses dnd-kit. Those jobs are not hand-rolled |
 | S83 | The stack is `docs/TECH_STACK.md`. React, Vite, and TypeScript in `frontend/`. FastAPI on Python 3.12 with uv. `pyproject.toml` and `uv.lock` sit at the repo root |
 | S84 | `npm test` runs Vitest, pytest, and Playwright with the installed Google Chrome. Playwright starts the app. Any failure fails the command |
-| S85 | Roles, Google sign-in, magic links, password reset, copying the local SQLite file into Supabase, a backend on another computer, a phone layout, AI, mail, calendar, phone integration, other currencies, extra reports, tags, custom fields, stage editing, import, and export are not built |
+| S85 | Roles, Google sign-in, magic links, password reset, copying the local SQLite file into Supabase, a backend on another computer, AI, mail, calendar, phone integration, other currencies, extra reports, tags, custom fields, stage editing, import, and export are not built |
 | S86 | The pipeline layout is the figures mockup: a totals panel, a stage chip on each column, and Add deal |
 | S87 | Sign-in is Supabase email and password. There is no sign-up page. People are added in the Supabase dashboard |
 | S88 | The browser holds the Supabase URL and the publishable key, and this browser stores the sign-in token. A reload stays signed in. `GET /api/config` is the only route that answers while signed out. Every other route checks the token and takes the user from it |

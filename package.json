@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "start": "node scripts/start.mjs",
+    "deploy:frontend": "node scripts/deploy-frontend.mjs",
     "test": "node scripts/test.mjs",
     "check": "node scripts/check.mjs",
     "check:quick": "node scripts/check.mjs --quick",

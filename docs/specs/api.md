@@ -2,11 +2,12 @@
 
 The frontend reads and writes only through this JSON API. It does not talk to the database. While `npm run dev` is running, the browser calls `/api` on the same origin. The site on the S3 bucket calls the backend at `http://127.0.0.1:8000`. The backend allows that site's origin.
 
-`GET /api/config` answers while signed out and returns only the Supabase URL and the publishable key. Every other route requires a bearer token for the signed-in person. A missing or invalid token returns 401. The backend takes the user from the token.
+`GET /api/config` answers while signed out and returns only the Supabase URL and the publishable key. `POST /api/session` also answers while signed out, and only when the backend is local. It checks the email and the password and returns a token. The shared backend does not offer that route. Every other route requires a bearer token for the signed-in person. A missing or invalid token returns 401. The backend takes the user from the token.
 
 | Action | Method and path |
 |---|---|
 | Public sign-in settings | `GET /api/config` |
+| Local sign-in | `POST /api/session` |
 | Top-bar search | `GET /api/search?q=` |
 | Dashboard payload | `GET /api/dashboard` |
 | List organizations | `GET /api/organizations?q=&sort=&dir=` |

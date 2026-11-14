@@ -96,7 +96,7 @@ a {
   padding: 8px 12px;
 }
 
-.nav a {
+.nav > a {
   color: var(--ink);
   text-decoration: none;
   font-weight: 600;
@@ -105,13 +105,88 @@ a {
   border-radius: 999px;
 }
 
-.nav a.active {
+.nav > a.active {
   background: var(--sea);
   color: var(--midnight);
 }
 
-.theme-toggle {
+.nav-end {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search,
+.user-menu {
+  position: relative;
+}
+
+.search input {
+  background: var(--bg);
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  min-width: 180px;
+  color: var(--ink);
+}
+
+.user-menu .menu,
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.user-menu .menu {
+  right: 0;
+}
+
+.search-results {
+  left: 0;
+  min-width: 280px;
+}
+
+.search-results a {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.user-menu .menu button {
+  text-align: left;
+}
+
+.user-menu .menu button[aria-pressed="true"] {
+  background: var(--sea);
+  color: var(--midnight);
+}
+
+.signin-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+
+.signin-panel {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.signin-panel .field input {
+  width: 100%;
 }
 
 h1 {
@@ -510,6 +585,84 @@ button:disabled {
   align-items: start;
 }
 
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .banner {
   margin: 12px 0;
+}
+
+@media (max-width: 900px) {
+  .wrap {
+    min-width: 0;
+    width: 100%;
+    padding: 16px 16px 40px;
+  }
+
+  .nav {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .nav > a,
+  .user-menu .quiet,
+  button.primary,
+  button.danger {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .nav-end {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .search {
+    flex: 1;
+  }
+
+  .search input,
+  .toolbar input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .page-head,
+  .filters,
+  .board-head,
+  .task {
+    flex-wrap: wrap;
+  }
+
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .table-scroll,
+  .board {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .board {
+    grid-template-columns: repeat(6, 220px);
+  }
+
+  .timeline li,
+  .feed li {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
 }

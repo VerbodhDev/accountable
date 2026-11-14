@@ -8,7 +8,7 @@ The pipeline has the same top bar. A panel shows the open pipeline and the expec
 
 ## Look
 
-The brand guidelines win over any general design guidance. Light mode is the default. The screen is for a laptop or a desktop. There is no phone layout. A narrow window scrolls. It does not rearrange into a phone page.
+The brand guidelines win over any general design guidance. Light mode is the default. A window wider than 900px keeps the laptop layout. A narrower window uses the phone layout. The top bar wraps. The figures and the paired panels stack. At 560px the figures stack in one column. A table or the pipeline scrolls sideways inside its own panel. The page itself does not scroll sideways.
 
 The top bar is on every page. It has a search box and a menu under the signed-in person's initials. The menu holds Light, Dark, System, and Sign out. There is no separate theme button. This browser stores the theme choice. A reload keeps it. The choice does not follow the person to another computer. System follows that device's setting. A stored value of dark is dark mode. A stored value of system follows the device. Any other stored value is light mode.
 

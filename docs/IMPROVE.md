@@ -10,3 +10,5 @@ Run this at Deploy, after the review fixes and before the merge.
 ## Lessons
 
 A test must read the label a person sees. A pressed state is not enough. Dark mode shipped with the button still saying Dark mode. The end-to-end test looked for that same name, so it passed.
+
+A phone layout is proved when the page scroll width equals the window. A wide table or the pipeline scrolls inside its own panel.

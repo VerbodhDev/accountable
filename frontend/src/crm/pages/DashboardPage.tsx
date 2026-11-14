@@ -76,6 +76,9 @@ export function DashboardPage() {
                         {item.record_name}
                       </Link>
                       {item.detail ? <> {item.detail}</> : null}
+                      {item.kind === "activity" && item.added_by_name ? (
+                        <span> Added by {item.added_by_name}</span>
+                      ) : null}
                     </span>
                   </li>
                 ))}

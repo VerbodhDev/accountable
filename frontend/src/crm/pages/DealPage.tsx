@@ -110,6 +110,12 @@ export function DealPage() {
             <span>Close date</span>
             <b className="mono">{shortDate(deal.close_date)}</b>
           </li>
+          {deal.added_by_name ? (
+            <li>
+              <span>Added by</span>
+              <b>{deal.added_by_name}</b>
+            </li>
+          ) : null}
         </ul>
       </section>
       <Timeline

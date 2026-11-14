@@ -90,6 +90,12 @@ export function ContactPage() {
               <b>No organization</b>
             )}
           </li>
+          {contact.added_by_name ? (
+            <li>
+              <span>Added by</span>
+              <b>{contact.added_by_name}</b>
+            </li>
+          ) : null}
         </ul>
       </section>
       <section className="panel stack">

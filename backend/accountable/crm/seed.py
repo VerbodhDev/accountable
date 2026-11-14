@@ -6,8 +6,25 @@ The names and the amounts stay the same on every fresh start.
 
 from datetime import date, timedelta
 
+from sqlalchemy import select
+
 from accountable.crm.rules import USUAL_PROBABILITY, month_windows
-from accountable.crm.tables import activities, contacts, deals, organizations, stage_entries
+from accountable.crm.tables import activities, contacts, deals, organizations, people, stage_entries
+
+ALEX_ID = "alex-rivera"
+LOCAL_PASSWORD = "local-only"
+LOCAL_PEOPLE = (
+    {"id": "alex-rivera", "name": "Alex Rivera", "email": "alex.rivera@example.com"},
+    {"id": "jordan-blake", "name": "Jordan Blake", "email": "jordan.blake@example.com"},
+    {"id": "sam-patel", "name": "Sam Patel", "email": "sam.patel@example.com"},
+)
+
+
+def ensure_local_people(conn) -> None:
+    for person in LOCAL_PEOPLE:
+        found = conn.execute(select(people.c.id).where(people.c.id == person["id"])).first()
+        if found is None:
+            conn.execute(people.insert().values(**person))
 
 
 def _day(today: date, months_ago: int) -> date:
@@ -19,6 +36,7 @@ def _day(today: date, months_ago: int) -> date:
 
 def insert_sample(conn, today: date | None = None) -> None:
     today = today or date.today()
+    ensure_local_people(conn)
     org_ids = {}
     for name, website, industry in (
         ("Brightpath Software", "https://brightpath.example", "Software"),
@@ -31,7 +49,14 @@ def insert_sample(conn, today: date | None = None) -> None:
         ("Harbor Dental", "https://harbor.example", "Dental"),
     ):
         result = conn.execute(
-            organizations.insert().values(name=name, website=website, industry=industry, notes=None)
+            organizations.insert().values(
+                name=name,
+                website=website,
+                industry=industry,
+                notes=None,
+                added_by=ALEX_ID,
+                updated_by=ALEX_ID,
+            )
         )
         org_ids[name] = int(result.inserted_primary_key[0])
 
@@ -65,6 +90,8 @@ def insert_sample(conn, today: date | None = None) -> None:
                 job_title=title,
                 organization_id=org_ids[org_name] if org_name else None,
                 status=status,
+                added_by=ALEX_ID,
+                updated_by=ALEX_ID,
             )
         )
         contact_ids[name] = int(result.inserted_primary_key[0])
@@ -240,6 +267,8 @@ def insert_sample(conn, today: date | None = None) -> None:
                 probability_hand_set=False,
                 close_date=close_date,
                 position=position,
+                added_by=ALEX_ID,
+                updated_by=ALEX_ID,
             )
         )
         deal_ids[name] = int(result.inserted_primary_key[0])
@@ -365,6 +394,8 @@ def insert_sample(conn, today: date | None = None) -> None:
                 done=done,
                 contact_id=contact_ids[contact_name] if contact_name else None,
                 deal_id=deal_ids[deal_name] if deal_name else None,
+                added_by=ALEX_ID,
+                updated_by=ALEX_ID,
             )
         )
     conn.execute(

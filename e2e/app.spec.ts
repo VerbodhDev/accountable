@@ -15,7 +15,16 @@ test.beforeEach(async ({ page }) => {
     errors.push(text)
   })
   page.on("pageerror", (error) => errors.push(String(error)))
+  await signIn(page)
 })
+
+async function signIn(page: Page) {
+  await page.goto("/")
+  await page.getByLabel("Email").fill("alex.rivera@example.com")
+  await page.getByLabel("Password").fill("local-only")
+  await page.getByRole("button", { name: "Sign in" }).click()
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+}
 
 test.afterEach(() => {
   expect(errors).toEqual([])

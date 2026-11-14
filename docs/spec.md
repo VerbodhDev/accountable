@@ -10,7 +10,7 @@ A small business keeps track of its customers and sales in spreadsheets, inboxes
 
 Accountable is a business management system. It is a sales CRM that will grow into a full Business OS, including ERP. A small team uses it to sell to other companies. The people sign in and work on the same organizations, contacts, and deals.
 
-The backend runs on one computer. The built frontend is served from a temporary S3 bucket with public access blocked. A browser on that computer loads the frontend and calls the local backend. The app keeps every change. A restart shows the same records.
+The backend runs on one computer. The built frontend is served from a temporary S3 bucket with public access blocked. CloudFront is the only reader. A browser on that computer loads the frontend and calls the local backend. A window narrower than 900px uses the phone layout. The app keeps every change. A restart shows the same records.
 
 ## Users and access
 

@@ -74,6 +74,9 @@ export function Timeline({
               <div>
                 <strong>{item.kind === "stage" ? item.title : item.type}</strong>
                 {item.kind === "activity" ? <p>{item.description}</p> : null}
+                {item.kind === "activity" && item.added_by_name ? (
+                  <p>Added by {item.added_by_name}</p>
+                ) : null}
                 {item.kind === "activity" && item.follow_up_date ? (
                   <p>Follow-up {shortDate(item.follow_up_date)}</p>
                 ) : null}

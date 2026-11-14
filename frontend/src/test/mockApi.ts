@@ -13,6 +13,9 @@ export class ApiError extends Error {
 }
 
 export const api = {
+  config: vi.fn(),
+  signIn: vi.fn(),
+  search: vi.fn(),
   dashboard: vi.fn(),
   organizations: vi.fn(),
   organization: vi.fn(),

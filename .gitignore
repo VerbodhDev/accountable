@@ -45,6 +45,8 @@ coverage/
 
 # Local databases
 *.db
+data/frontend-deploy.json
+data/frontend-origin
 *.sqlite
 *.sqlite3
 *.db-journal

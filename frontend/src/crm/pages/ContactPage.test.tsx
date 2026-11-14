@@ -26,6 +26,8 @@ test("a contact shows the organization and the deals", async () => {
   expect(screen.getAllByRole("link", { name: "Kitchen rollout" }).length).toBeGreaterThan(0)
   expect(screen.getByText("ada@northwind.example")).toBeTruthy()
   expect(screen.getByText("Buyer")).toBeTruthy()
+  expect(screen.getByText("Added by")).toBeTruthy()
+  expect(screen.getByText("Alex Rivera")).toBeTruthy()
 })
 
 test("a contact can have no organization and no deals", async () => {

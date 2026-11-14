@@ -28,6 +28,8 @@ test("an organization shows its people and deals", async () => {
   expect(screen.getByRole("link", { name: "Ada West" })).toBeTruthy()
   expect(screen.getByRole("link", { name: "Kitchen rollout" })).toBeTruthy()
   expect(screen.getByText("Lead")).toBeTruthy()
+  expect(screen.getByText("Added by")).toBeTruthy()
+  expect(screen.getByText("Alex Rivera")).toBeTruthy()
 })
 
 test("an organization can omit notes, the website, people, and deals", async () => {
@@ -37,12 +39,14 @@ test("an organization can omit notes, the website, people, and deals", async () 
       notes: null,
       contacts: [],
       deals: [],
+      added_by_name: null,
     }),
   )
   renderRoute("/organizations/1", "/organizations/:id", <OrganizationPage />)
   expect(await screen.findByRole("heading", { name: "Northwind" })).toBeTruthy()
   expect(screen.getAllByText("There are no records yet.")).toHaveLength(2)
   expect(screen.queryByText("Key account")).toBeNull()
+  expect(screen.queryByText("Added by")).toBeNull()
 })
 
 test("edit, add contact, and add deal save from the organization", async () => {

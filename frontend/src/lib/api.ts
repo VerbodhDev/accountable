@@ -18,6 +18,7 @@ export type Organization = {
   website: string | null
   industry: string | null
   notes: string | null
+  added_by_name?: string | null
 }
 
 export type Contact = {
@@ -29,6 +30,7 @@ export type Contact = {
   organization_id: number | null
   organization_name: string | null
   status: string
+  added_by_name?: string | null
 }
 
 export type Deal = {
@@ -46,6 +48,7 @@ export type Deal = {
   position: number
   late: boolean
   expected_cents: number
+  added_by_name?: string | null
 }
 
 export type TimelineItem = {
@@ -63,6 +66,7 @@ export type TimelineItem = {
   record_type: string
   record_id: number
   record_name: string
+  added_by_name?: string | null
 }
 
 export type OrganizationDetail = Organization & { contacts: Contact[]; deals: Deal[] }
@@ -122,32 +126,85 @@ export type ActivityBody = {
 
 type Query = { q?: string; sort?: string; dir?: string; status?: string }
 
+export type PublicConfig = {
+  supabase_url: string
+  supabase_publishable_key: string
+}
+
+export type SessionUser = {
+  token: string
+  name: string
+  email: string
+}
+
+export type SearchHit = {
+  kind: "organization" | "contact" | "deal"
+  id: number
+  name: string
+}
+
+let authToken: string | null = null
+let onUnauthorized: (() => void) | null = null
+
+export function setAuthToken(token: string | null) {
+  authToken = token
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler
+}
+
+export function apiBaseFor(host: string): string {
+  if (host.startsWith("127.0.0.1") || host.startsWith("localhost")) return ""
+  return "http://127.0.0.1:8000"
+}
+
+function apiUrl(path: string): string {
+  if (path.startsWith("http")) return path
+  const host = typeof location === "undefined" ? "" : location.host
+  return `${apiBaseFor(host)}${path}`
+}
+
+function withAuth(options?: RequestInit): RequestInit {
+  const headers = new Headers(options?.headers)
+  if (authToken) headers.set("Authorization", `Bearer ${authToken}`)
+  return { ...options, headers }
+}
+
+type ErrorBody = { detail?: { field?: string; message?: string } | string }
+
+function errorFor(status: number, body: ErrorBody | null): ApiError {
+  const detail = body?.detail
+  if (detail && typeof detail === "object") {
+    return new ApiError(status, detail.message || "Check this field", detail.field)
+  }
+  return new ApiError(status, typeof detail === "string" ? detail : "Could not load records.")
+}
+
+async function payload<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    authToken = null
+    onUnauthorized?.()
+  }
+  if (response.status === 204) return undefined as T
+  const text = await response.text()
+  let body: ErrorBody | null = null
+  if (text) {
+    try {
+      body = JSON.parse(text) as ErrorBody
+    } catch {
+      body = null
+    }
+  }
+  if (!response.ok) throw errorFor(response.status, body)
+  return body as T
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let lastError: unknown
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const response = await fetch(path, options)
-      if (response.status === 204) return undefined as T
-      const text = await response.text()
-      let body: { detail?: { field?: string; message?: string } | string } | null = null
-      if (text) {
-        try {
-          body = JSON.parse(text) as { detail?: { field?: string; message?: string } | string }
-        } catch {
-          body = null
-        }
-      }
-      if (!response.ok) {
-        const detail = body?.detail
-        if (detail && typeof detail === "object") {
-          throw new ApiError(response.status, detail.message || "Check this field", detail.field)
-        }
-        throw new ApiError(
-          response.status,
-          typeof detail === "string" ? detail : "Could not load records.",
-        )
-      }
-      return body as T
+      return await payload<T>(await fetch(apiUrl(path), withAuth(options)))
     } catch (error) {
       if (error instanceof ApiError) throw error
       if (error instanceof TypeError) {
@@ -179,7 +236,38 @@ function withQuery(path: string, params: Query): string {
   return text ? `${path}?${text}` : path
 }
 
+export async function signInWithSupabase(
+  url: string,
+  key: string,
+  email: string,
+  password: string,
+): Promise<SessionUser> {
+  const response = await fetch(`${url.replace(/\/$/, "")}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: key },
+    body: JSON.stringify({ email, password }),
+  })
+  const text = await response.text()
+  const wrong = new ApiError(response.status, "Email or password is wrong", "password")
+  if (!response.ok) throw wrong
+  const body = JSON.parse(text) as {
+    access_token?: string
+    user?: { email?: string; user_metadata?: { full_name?: string; name?: string } }
+  }
+  if (!body.access_token) throw wrong
+  const meta = body.user?.user_metadata ?? {}
+  return {
+    token: body.access_token,
+    name: meta.full_name || meta.name || body.user?.email || email,
+    email: body.user?.email || email,
+  }
+}
+
 export const api = {
+  config: () => request<PublicConfig>("/api/config"),
+  signIn: (email: string, password: string) =>
+    send<SessionUser>("/api/session", "POST", { email, password }),
+  search: (q: string) => request<{ items: SearchHit[] }>(`/api/search?q=${encodeURIComponent(q)}`),
   dashboard: () => request<Dashboard>("/api/dashboard"),
   organizations: (query: Query = {}) =>
     request<List<Organization>>(withQuery("/api/organizations", query)),

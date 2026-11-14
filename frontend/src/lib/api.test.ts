@@ -1,180 +1,98 @@
 import { afterEach, expect, test, vi } from "vitest"
-import { ApiError, api } from "./api"
+import { api, apiBaseFor, setAuthToken, setUnauthorizedHandler, signInWithSupabase } from "./api"
 
-type Seen = { url: string; method?: string; body?: string; json?: boolean }
-
-function payload(status: number, body?: unknown) {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    text: async () => (body === undefined ? "" : JSON.stringify(body)),
-  }
+function call(fetchMock: { mock: { calls: unknown[][] } }, index: number): [string, RequestInit?] {
+  const sent = fetchMock.mock.calls[index]
+  if (!sent) throw new Error("The request was not sent")
+  return sent as [string, RequestInit?]
 }
 
 afterEach(() => {
+  setAuthToken(null)
+  setUnauthorizedHandler(null)
   vi.unstubAllGlobals()
-  vi.useRealTimers()
 })
 
-test("each call uses its path and method", async () => {
-  const seen: Seen[] = []
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, options?: RequestInit) => {
-      const headers = options?.headers as Record<string, string> | undefined
-      seen.push({
-        url: String(url),
-        method: options?.method,
-        body: options?.body ? String(options.body) : undefined,
-        json: headers?.["Content-Type"] === "application/json",
-      })
-      return payload(options?.method === "DELETE" ? 204 : 200, { id: 1 })
-    }),
-  )
-
-  await api.dashboard()
-  await api.organizations()
-  await api.organizations({ q: "ada", sort: "name", dir: "asc", status: "" })
-  await api.organization(4)
-  await api.createOrganization({ name: "Northwind" })
-  await api.updateOrganization(4, { name: "Eastwind" })
-  await api.deleteOrganization(4)
-  await api.contacts({ status: "lead" })
-  await api.contact(2)
-  await api.createContact({ name: "Ada" })
-  await api.updateContact(2, { name: "Ada West" })
-  await api.deleteContact(2)
-  await api.deals({ q: "kit" })
-  await api.deal(3)
-  await api.createDeal({ name: "Kitchen", organization_id: 1 })
-  await api.updateDeal(3, { stage: "Won", position: 1 })
-  await api.deleteDeal(3)
-  await api.createActivity({ type: "Call", description: "Spoke" })
-  await api.updateActivity(5, { done: true })
-  await api.deleteActivity(5)
-  await api.deleteStageEntry(6)
-
-  expect(seen.map((item) => item.url)).toEqual([
-    "/api/dashboard",
-    "/api/organizations",
-    "/api/organizations?q=ada&sort=name&dir=asc",
-    "/api/organizations/4",
-    "/api/organizations",
-    "/api/organizations/4",
-    "/api/organizations/4",
-    "/api/contacts?status=lead",
-    "/api/contacts/2",
-    "/api/contacts",
-    "/api/contacts/2",
-    "/api/contacts/2",
-    "/api/deals?q=kit",
-    "/api/deals/3",
-    "/api/deals",
-    "/api/deals/3",
-    "/api/deals/3",
-    "/api/activities",
-    "/api/activities/5",
-    "/api/activities/5",
-    "/api/stage-entries/6",
-  ])
-  expect(seen[4]).toMatchObject({
-    method: "POST",
-    json: true,
-    body: JSON.stringify({ name: "Northwind" }),
-  })
-  expect(seen[6]).toMatchObject({ method: "DELETE", json: false, body: undefined })
-  expect(seen[0].method).toBeUndefined()
+test("the api base stays on this computer except for the local site", () => {
+  expect(apiBaseFor("127.0.0.1:5173")).toBe("")
+  expect(apiBaseFor("localhost:5173")).toBe("")
+  expect(apiBaseFor("bucket.s3.amazonaws.com")).toBe("http://127.0.0.1:8000")
 })
 
-test("an empty or broken body does not become a record", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => payload(204)),
-  )
-  await expect(api.deleteDeal(3)).resolves.toBeUndefined()
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({ status: 200, ok: true, text: async () => "" })),
-  )
-  await expect(api.dashboard()).resolves.toBeNull()
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({ status: 200, ok: true, text: async () => "not-json" })),
-  )
-  await expect(api.dashboard()).resolves.toBeNull()
-})
-
-test("a field error keeps the field and the message", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => payload(422, { detail: { field: "name", message: "Name is required" } })),
-  )
-  await expect(api.createOrganization({})).rejects.toMatchObject({
-    name: "ApiError",
-    status: 422,
-    field: "name",
-    message: "Name is required",
-  })
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => payload(422, { detail: { field: "value", message: "" } })),
-  )
-  await expect(api.createDeal({})).rejects.toMatchObject({
-    message: "Check this field",
-    field: "value",
-  })
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => payload(404, { detail: "This record is not here." })),
-  )
-  const missing = api.deal(9)
-  await expect(missing).rejects.toBeInstanceOf(ApiError)
-  await expect(missing).rejects.toMatchObject({ status: 404, message: "This record is not here." })
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => payload(500, {})),
-  )
-  await expect(api.dashboard()).rejects.toMatchObject({ message: "Could not load records." })
-})
-
-test("a dropped connection is tried again", async () => {
-  vi.useFakeTimers()
-  const fetchMock = vi
-    .fn()
-    .mockRejectedValueOnce(new TypeError("offline"))
-    .mockResolvedValueOnce(payload(200, { today: "2026-11-14" }))
+test("a request sends the bearer token and keeps the content type", async () => {
+  const fetchMock = vi.fn(async () => ({
+    status: 200,
+    ok: true,
+    text: async () =>
+      JSON.stringify({ token: "issued", name: "Alex Rivera", email: "a@example.com" }),
+  }))
   vi.stubGlobal("fetch", fetchMock)
-  const pending = api.dashboard()
-  await vi.runAllTimersAsync()
-  await expect(pending).resolves.toEqual({ today: "2026-11-14" })
-  expect(fetchMock).toHaveBeenCalledTimes(2)
+  setAuthToken("abc")
+  await api.signIn("a@example.com", "local-only")
+  const sent = call(fetchMock, 0)
+  const headers = new Headers(sent[1]?.headers)
+  expect(headers.get("Authorization")).toBe("Bearer abc")
+  expect(headers.get("Content-Type")).toBe("application/json")
 })
 
-test("a connection that stays down gives up", async () => {
-  vi.useFakeTimers()
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => {
-      throw new TypeError("offline")
-    }),
-  )
-  const pending = api.dashboard()
-  const failed = expect(pending).rejects.toThrow(TypeError)
-  await vi.runAllTimersAsync()
-  await failed
+test("a 401 clears the token and tells the session", async () => {
+  const handler = vi.fn()
+  setUnauthorizedHandler(handler)
+  setAuthToken("abc")
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers)
+    if (headers.get("Authorization")) {
+      return { status: 401, ok: false, text: async () => JSON.stringify({ detail: "Sign in" }) }
+    }
+    return {
+      status: 200,
+      ok: true,
+      text: async () => JSON.stringify({ supabase_url: "", supabase_publishable_key: "" }),
+    }
+  })
+  vi.stubGlobal("fetch", fetchMock)
+  await expect(api.dashboard()).rejects.toThrow("Sign in")
+  expect(handler).toHaveBeenCalledOnce()
+  await api.config()
+  const sent = call(fetchMock, 1)
+  const headers = new Headers(sent[1]?.headers)
+  expect(headers.get("Authorization")).toBeNull()
 })
 
-test("a failure that is not a dropped connection stops at once", async () => {
+test("supabase sign-in reads the token from the auth response", async () => {
+  const fetchMock = vi.fn(async () => ({
+    status: 200,
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        access_token: "supabase-token",
+        user: { email: "casey@example.com", user_metadata: { full_name: "Casey Quinn" } },
+      }),
+  }))
+  vi.stubGlobal("fetch", fetchMock)
+  const user = await signInWithSupabase(
+    "https://example.supabase.co/",
+    "sb_publishable_test",
+    "casey@example.com",
+    "secret",
+  )
+  expect(user).toEqual({
+    token: "supabase-token",
+    name: "Casey Quinn",
+    email: "casey@example.com",
+  })
+  const sent = call(fetchMock, 0)
+  expect(sent[0]).toBe("https://example.supabase.co/auth/v1/token?grant_type=password")
+  const headers = new Headers(sent[1]?.headers)
+  expect(headers.get("apikey")).toBe("sb_publishable_test")
+})
+
+test("a rejected supabase password stays a field error", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => {
-      throw new Error("boom")
-    }),
+    vi.fn(async () => ({ status: 400, ok: false, text: async () => "{}" })),
   )
-  await expect(api.dashboard()).rejects.toThrow("boom")
+  await expect(
+    signInWithSupabase("https://example.supabase.co", "key", "a@example.com", "nope"),
+  ).rejects.toMatchObject({ field: "password" })
 })

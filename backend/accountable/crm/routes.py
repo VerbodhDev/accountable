@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, nulls_last, or_, select
 from sqlalchemy.engine import Connection
 
+from accountable.auth import require_user
 from accountable.crm import rules
 from accountable.crm.schemas import ActivityIn, ContactIn, DealIn, OrganizationIn
 from accountable.crm.tables import activities, contacts, deals, organizations, stage_entries
 from accountable.db import get_engine
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
 
 def get_conn(request: Request):
@@ -29,17 +30,26 @@ def _found(conn: Connection, table, row_id: int) -> bool:
     return conn.execute(select(table.c.id).where(table.c.id == row_id)).first() is not None
 
 
-def _org_out(row) -> dict:
+def _person_id(request: Request) -> str:
+    return str(request.state.person["id"])
+
+
+def _author(names: dict[str, str], row) -> str | None:
+    return names.get(row["added_by"])
+
+
+def _org_out(row, added_by_name: str | None) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
         "website": row["website"],
         "industry": row["industry"],
         "notes": row["notes"],
+        "added_by_name": added_by_name,
     }
 
 
-def _contact_out(row, organization_name: str | None) -> dict:
+def _contact_out(row, organization_name: str | None, added_by_name: str | None) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -49,10 +59,17 @@ def _contact_out(row, organization_name: str | None) -> dict:
         "organization_id": row["organization_id"],
         "organization_name": organization_name,
         "status": row["status"],
+        "added_by_name": added_by_name,
     }
 
 
-def _deal_out(row, organization_name: str, contact_name: str | None, today: date) -> dict:
+def _deal_out(
+    row,
+    organization_name: str,
+    contact_name: str | None,
+    today: date,
+    added_by_name: str | None,
+) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -68,6 +85,7 @@ def _deal_out(row, organization_name: str, contact_name: str | None, today: date
         "position": row["position"],
         "late": rules.is_late(row["stage"], row["close_date"], today),
         "expected_cents": rules.expected_cents(row["value_cents"], row["probability"]),
+        "added_by_name": added_by_name,
     }
 
 
@@ -88,10 +106,13 @@ def _load_deal(conn: Connection, deal_id: int, today: date) -> dict | None:
     )
     if row is None:
         return None
-    return _deal_out(row, row["organization_name"], row["contact_name"], today)
+    names = rules.person_names(conn)
+    return _deal_out(row, row["organization_name"], row["contact_name"], today, _author(names, row))
 
 
-def _activity_item(row, record_type: str, record_id: int, record_name: str) -> dict:
+def _activity_item(
+    row, record_type: str, record_id: int, record_name: str, added_by_name: str | None
+) -> dict:
     return {
         "kind": "activity",
         "id": row["id"],
@@ -107,6 +128,7 @@ def _activity_item(row, record_type: str, record_id: int, record_name: str) -> d
         "record_type": record_type,
         "record_id": record_id,
         "record_name": record_name,
+        "added_by_name": added_by_name,
     }
 
 
@@ -129,9 +151,10 @@ def _sort_timeline(items: list[dict]) -> list[dict]:
 
 
 def _deal_timeline(conn: Connection, deal_id: int, deal_name: str) -> list[dict]:
+    names = rules.person_names(conn)
     items = []
     for row in conn.execute(select(activities).where(activities.c.deal_id == deal_id)).mappings():
-        items.append(_activity_item(row, "deal", deal_id, deal_name))
+        items.append(_activity_item(row, "deal", deal_id, deal_name, _author(names, row)))
     for row in conn.execute(
         select(stage_entries).where(stage_entries.c.deal_id == deal_id)
     ).mappings():
@@ -140,25 +163,36 @@ def _deal_timeline(conn: Connection, deal_id: int, deal_name: str) -> list[dict]
 
 
 def _contact_timeline(conn: Connection, contact_id: int, contact_name: str) -> list[dict]:
+    authors = rules.person_names(conn)
     items = []
     for row in conn.execute(
         select(activities).where(activities.c.contact_id == contact_id)
     ).mappings():
-        items.append(_activity_item(row, "contact", contact_id, contact_name))
+        items.append(
+            _activity_item(row, "contact", contact_id, contact_name, _author(authors, row))
+        )
     deal_rows = conn.execute(
         select(deals.c.id, deals.c.name).where(deals.c.contact_id == contact_id)
     ).all()
     deal_ids = [row.id for row in deal_rows]
-    names = {row.id: row.name for row in deal_rows}
+    deal_names = {row.id: row.name for row in deal_rows}
     if deal_ids:
         for row in conn.execute(
             select(activities).where(activities.c.deal_id.in_(deal_ids))
         ).mappings():
-            items.append(_activity_item(row, "deal", row["deal_id"], names[row["deal_id"]]))
+            items.append(
+                _activity_item(
+                    row,
+                    "deal",
+                    row["deal_id"],
+                    deal_names[row["deal_id"]],
+                    _author(authors, row),
+                )
+            )
         for row in conn.execute(
             select(stage_entries).where(stage_entries.c.deal_id.in_(deal_ids))
         ).mappings():
-            items.append(_stage_item(row, names[row["deal_id"]]))
+            items.append(_stage_item(row, deal_names[row["deal_id"]]))
     return _sort_timeline(items)
 
 
@@ -203,14 +237,20 @@ def list_organizations(
     column = columns.get(sort, organizations.c.name)
     stmt = stmt.order_by(_ordered(column, _direction(dir) if sort else "asc"))
     rows = conn.execute(stmt).mappings().all()
-    return {"today": _today().isoformat(), "items": [_org_out(row) for row in rows]}
+    names = rules.person_names(conn)
+    return {
+        "today": _today().isoformat(),
+        "items": [_org_out(row, _author(names, row)) for row in rows],
+    }
 
 
 @router.post("/organizations", status_code=201)
-def post_organization(body: OrganizationIn, conn: Connection = db_conn):
-    org_id = rules.create_organization(conn, body.model_dump(exclude_unset=True))
+def post_organization(body: OrganizationIn, request: Request, conn: Connection = db_conn):
+    org_id = rules.create_organization(
+        conn, body.model_dump(exclude_unset=True), _person_id(request)
+    )
     row = conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().one()
-    return _org_out(row)
+    return _org_out(row, _author(rules.person_names(conn), row))
 
 
 @router.get("/organizations/{org_id}")
@@ -244,22 +284,31 @@ def get_organization(org_id: int, conn: Connection = db_conn):
         .mappings()
         .all()
     )
-    payload = _org_out(row)
-    payload["contacts"] = [_contact_out(item, item["organization_name"]) for item in people]
+    names = rules.person_names(conn)
+    payload = _org_out(row, _author(names, row))
+    payload["contacts"] = [
+        _contact_out(item, item["organization_name"], _author(names, item)) for item in people
+    ]
     payload["deals"] = [
-        _deal_out(item, item["organization_name"], item["contact_name"], today)
+        _deal_out(
+            item, item["organization_name"], item["contact_name"], today, _author(names, item)
+        )
         for item in deal_rows
     ]
     return payload
 
 
 @router.patch("/organizations/{org_id}")
-def patch_organization(org_id: int, body: OrganizationIn, conn: Connection = db_conn):
+def patch_organization(
+    org_id: int, body: OrganizationIn, request: Request, conn: Connection = db_conn
+):
     if not _found(conn, organizations, org_id):
         raise HTTPException(status_code=404, detail="Not found")
-    rules.update_organization(conn, org_id, body.model_dump(exclude_unset=True))
+    rules.update_organization(
+        conn, org_id, body.model_dump(exclude_unset=True), _person_id(request)
+    )
     row = conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().one()
-    return _org_out(row)
+    return _org_out(row, _author(rules.person_names(conn), row))
 
 
 @router.delete("/organizations/{org_id}", status_code=204)
@@ -305,15 +354,18 @@ def list_contacts(
     column = columns.get(sort, contacts.c.name)
     stmt = stmt.order_by(_ordered(column, _direction(dir) if sort else "asc"))
     rows = conn.execute(stmt).mappings().all()
+    names = rules.person_names(conn)
     return {
         "today": _today().isoformat(),
-        "items": [_contact_out(row, row["organization_name"]) for row in rows],
+        "items": [_contact_out(row, row["organization_name"], _author(names, row)) for row in rows],
     }
 
 
 @router.post("/contacts", status_code=201)
-def post_contact(body: ContactIn, conn: Connection = db_conn):
-    contact_id = rules.create_contact(conn, body.model_dump(exclude_unset=True))
+def post_contact(body: ContactIn, request: Request, conn: Connection = db_conn):
+    contact_id = rules.create_contact(
+        conn, body.model_dump(exclude_unset=True), _person_id(request)
+    )
     return _contact_payload(conn, contact_id)
 
 
@@ -327,7 +379,8 @@ def _contact_payload(conn: Connection, contact_id: int) -> dict:
         .mappings()
         .one()
     )
-    payload = _contact_out(row, row["organization_name"])
+    names = rules.person_names(conn)
+    payload = _contact_out(row, row["organization_name"], _author(names, row))
     today = _today()
     deal_rows = (
         conn.execute(
@@ -345,7 +398,9 @@ def _contact_payload(conn: Connection, contact_id: int) -> dict:
         .all()
     )
     payload["deals"] = [
-        _deal_out(item, item["organization_name"], item["contact_name"], today)
+        _deal_out(
+            item, item["organization_name"], item["contact_name"], today, _author(names, item)
+        )
         for item in deal_rows
     ]
     payload["timeline"] = _contact_timeline(conn, contact_id, row["name"])
@@ -361,10 +416,10 @@ def get_contact(contact_id: int, conn: Connection = db_conn):
 
 
 @router.patch("/contacts/{contact_id}")
-def patch_contact(contact_id: int, body: ContactIn, conn: Connection = db_conn):
+def patch_contact(contact_id: int, body: ContactIn, request: Request, conn: Connection = db_conn):
     if not _found(conn, contacts, contact_id):
         raise HTTPException(status_code=404, detail="Not found")
-    rules.update_contact(conn, contact_id, body.model_dump(exclude_unset=True))
+    rules.update_contact(conn, contact_id, body.model_dump(exclude_unset=True), _person_id(request))
     return _contact_payload(conn, contact_id)
 
 
@@ -421,17 +476,23 @@ def list_deals(
         stmt = stmt.order_by(_ordered(column, _direction(dir), blanks_last=blanks), deals.c.id)
     today = _today()
     rows = conn.execute(stmt).mappings().all()
+    names = rules.person_names(conn)
     return {
         "today": today.isoformat(),
         "items": [
-            _deal_out(row, row["organization_name"], row["contact_name"], today) for row in rows
+            _deal_out(
+                row, row["organization_name"], row["contact_name"], today, _author(names, row)
+            )
+            for row in rows
         ],
     }
 
 
 @router.post("/deals", status_code=201)
-def post_deal(body: DealIn, conn: Connection = db_conn):
-    deal_id = rules.create_deal(conn, body.model_dump(exclude_unset=True), _today())
+def post_deal(body: DealIn, request: Request, conn: Connection = db_conn):
+    deal_id = rules.create_deal(
+        conn, body.model_dump(exclude_unset=True), _today(), _person_id(request)
+    )
     return _deal_payload(conn, deal_id)
 
 
@@ -453,10 +514,12 @@ def get_deal(deal_id: int, conn: Connection = db_conn):
 
 
 @router.patch("/deals/{deal_id}")
-def patch_deal(deal_id: int, body: DealIn, conn: Connection = db_conn):
+def patch_deal(deal_id: int, body: DealIn, request: Request, conn: Connection = db_conn):
     if not _found(conn, deals, deal_id):
         raise HTTPException(status_code=404, detail="Not found")
-    rules.update_deal(conn, deal_id, body.model_dump(exclude_unset=True), _today())
+    rules.update_deal(
+        conn, deal_id, body.model_dump(exclude_unset=True), _today(), _person_id(request)
+    )
     return _deal_payload(conn, deal_id)
 
 
@@ -467,28 +530,35 @@ def remove_deal(deal_id: int, conn: Connection = db_conn):
     return Response(status_code=204)
 
 
-@router.post("/activities", status_code=201)
-def post_activity(body: ActivityIn, conn: Connection = db_conn):
-    activity_id = rules.create_activity(conn, body.model_dump(exclude_unset=True), _today())
-    row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
+def _one_activity(conn: Connection, row) -> dict:
     record_type = "contact" if row["contact_id"] else "deal"
     record_id = row["contact_id"] or row["deal_id"]
+    added = _author(rules.person_names(conn), row)
     return _activity_item(
-        row, record_type, record_id, rules._record_name(conn, record_type, record_id)
+        row, record_type, record_id, rules._record_name(conn, record_type, record_id), added
     )
+
+
+@router.post("/activities", status_code=201)
+def post_activity(body: ActivityIn, request: Request, conn: Connection = db_conn):
+    activity_id = rules.create_activity(
+        conn, body.model_dump(exclude_unset=True), _today(), _person_id(request)
+    )
+    row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
+    return _one_activity(conn, row)
 
 
 @router.patch("/activities/{activity_id}")
-def patch_activity(activity_id: int, body: ActivityIn, conn: Connection = db_conn):
+def patch_activity(
+    activity_id: int, body: ActivityIn, request: Request, conn: Connection = db_conn
+):
     if not _found(conn, activities, activity_id):
         raise HTTPException(status_code=404, detail="Not found")
-    rules.update_activity(conn, activity_id, body.model_dump(exclude_unset=True), _today())
-    row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
-    record_type = "contact" if row["contact_id"] else "deal"
-    record_id = row["contact_id"] or row["deal_id"]
-    return _activity_item(
-        row, record_type, record_id, rules._record_name(conn, record_type, record_id)
+    rules.update_activity(
+        conn, activity_id, body.model_dump(exclude_unset=True), _today(), _person_id(request)
     )
+    row = conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().one()
+    return _one_activity(conn, row)
 
 
 @router.delete("/activities/{activity_id}", status_code=204)

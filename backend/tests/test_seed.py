@@ -66,6 +66,56 @@ def _activities_without_follow_up(client) -> int:
     return sum(1 for item in _each_activity(client) if not item["follow_up_date"])
 
 
+def test_sample_rows_were_added_by_alex_and_stage_entries_were_not(api):
+    client, _path = api
+    org = next(
+        row
+        for row in client.get("/api/organizations").json()["items"]
+        if row["name"] == "Lumen Clinic"
+    )
+    assert org["added_by_name"] == "Alex Rivera"
+    deal = next(
+        row for row in client.get("/api/deals").json()["items"] if row["name"] == "Annual retainer"
+    )
+    detail = client.get(f"/api/deals/{deal['id']}").json()
+    assert detail["added_by_name"] == "Alex Rivera"
+    activities = [item for item in detail["timeline"] if item["kind"] == "activity"]
+    stages = [item for item in detail["timeline"] if item["kind"] == "stage"]
+    assert activities
+    assert all(item["added_by_name"] == "Alex Rivera" for item in activities)
+    assert stages
+    assert all("added_by_name" not in item for item in stages)
+    recent = client.get("/api/dashboard").json()["recent"]
+    assert any(
+        item["kind"] == "activity" and item["added_by_name"] == "Alex Rivera" for item in recent
+    )
+    assert all("added_by_name" not in item for item in recent if item["kind"] == "stage")
+
+
+def test_startup_adds_person_columns_and_keeps_rows(tmp_path, monkeypatch):
+    monkeypatch.delenv("ACCOUNTABLE_SHARED", raising=False)
+    monkeypatch.delenv("ACCOUNTABLE_DB", raising=False)
+    path = tmp_path / "old.db"
+    from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, select, text
+
+    old = MetaData()
+    Table("organizations", old, Column("id", Integer, primary_key=True), Column("name", String))
+    engine = create_engine(f"sqlite:///{path}")
+    old.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO organizations (name) VALUES ('Kept Co')"))
+    engine.dispose()
+
+    init_database(path)
+    from accountable.crm.tables import organizations
+    from accountable.db import get_engine
+
+    with get_engine(path).connect() as conn:
+        row = conn.execute(select(organizations.c.name, organizations.c.added_by)).one()
+    assert row.name == "Kept Co"
+    assert row.added_by is None
+
+
 def test_second_start_keeps_added_rows(api):
     client, path = api
     owner = Path("data/accountable.db")

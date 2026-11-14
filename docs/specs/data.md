@@ -29,7 +29,7 @@ Names are fictional. The set is the same on every fresh database, so the screens
 
 The dev backend listens on `127.0.0.1` port 8000. The dev frontend listens on `127.0.0.1` port 5173 and proxies `/api` to the backend. Neither process listens on the network.
 
-`npm start` runs the backend on this computer against Supabase. Migrations run when it starts. The built frontend is uploaded to a temporary S3 bucket with public access blocked. From this computer, the browser opens that site and calls `http://127.0.0.1:8000`. The backend allows the origin in `FRONTEND_ORIGIN`. The Supabase URL and the publishable key are given to that frontend build. They are not committed. The database URL and `FRONTEND_ORIGIN` stay in the environment on this computer.
+`npm start` runs the backend on this computer against Supabase. Migrations run when it starts. The built frontend is uploaded to a temporary S3 bucket with public access blocked. CloudFront is the only reader, because the bucket blocks public access. From this computer, the browser opens that site and calls `http://127.0.0.1:8000`. The backend allows the origin in `FRONTEND_ORIGIN`. The Supabase URL and the publishable key are given to that frontend build. They are not committed. The database URL and `FRONTEND_ORIGIN` stay in the environment on this computer.
 
 `npm run dev` and the tests need no internet connection. The shared backend needs internet for Supabase. Fonts are files in the frontend, not a request to Google. This change does not deploy to Render.
 

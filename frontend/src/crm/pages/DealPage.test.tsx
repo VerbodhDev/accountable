@@ -27,6 +27,8 @@ test("a late deal shows the contact and the money", async () => {
   expect(screen.getByRole("link", { name: "Ada West" })).toBeTruthy()
   expect(screen.getByRole("link", { name: "Northwind" })).toBeTruthy()
   expect(screen.getByText("$1,250.00")).toBeTruthy()
+  expect(screen.getByText("Added by")).toBeTruthy()
+  expect(screen.getByText("Alex Rivera")).toBeTruthy()
 })
 
 test("a deal can have no main contact and still be on time", async () => {

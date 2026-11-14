@@ -2,11 +2,15 @@ import { spawn } from "node:child_process"
 
 const children = []
 
+const env = { ...process.env }
+// A leftover shared flag would point this local run at Supabase.
+delete env.ACCOUNTABLE_SHARED
+
 function start(command) {
   const child = spawn(command, {
     stdio: "inherit",
     shell: true,
-    env: process.env,
+    env,
   })
   children.push(child)
   child.on("exit", (code) => {

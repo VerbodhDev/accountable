@@ -29,6 +29,8 @@ process.on("SIGTERM", () => stop(0))
 process.on("SIGINT", () => stop(0))
 
 const env = { ...process.env, ACCOUNTABLE_DB: "data/e2e.db" }
+// The end-to-end run stays on its own SQLite file.
+delete env.ACCOUNTABLE_SHARED
 start(
   "uv run --group dev uvicorn accountable.main:app --app-dir backend --host 127.0.0.1 --port 8000",
   env,
@@ -37,7 +39,7 @@ start(
 async function waitForApi() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/dashboard")
+      const response = await fetch("http://127.0.0.1:8000/api/config")
       if (response.ok) return true
     } catch {
       // The API process is still starting.
@@ -49,4 +51,4 @@ async function waitForApi() {
 
 const ready = await waitForApi()
 if (!ready) stop(1)
-else start("npm run dev -w frontend", process.env)
+else start("npm run dev -w frontend", env)

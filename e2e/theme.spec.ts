@@ -17,37 +17,40 @@ test.afterEach(() => {
   expect(errors).toEqual([])
 })
 
-async function shot(page: Page, name: string) {
-  if (process.env.SHOTS !== "1") return
-  await page.screenshot({ path: `docs/changes/dark-mode/${name}.png`, fullPage: true })
+async function signIn(page: Page) {
+  await page.goto("/")
+  await page.getByLabel("Email").fill("alex.rivera@example.com")
+  await page.getByLabel("Password").fill("local-only")
+  await page.getByRole("button", { name: "Sign in" }).click()
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
 }
 
-test("dark mode turns on and stays on after a reload", async ({ page }) => {
-  await page.goto("/")
-  const toggle = page.getByRole("button", { name: "Dark mode" })
-  await expect(toggle).toHaveAttribute("aria-pressed", "false")
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
-  await shot(page, "dashboard-light")
-  await page.goto("/pipeline")
-  await shot(page, "pipeline-light")
-  await page.goto("/")
-  await toggle.click()
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  const back = page.getByRole("button", { name: "Light mode" })
-  await expect(back).toHaveAttribute("aria-pressed", "true")
-  await shot(page, "dashboard-dark")
-  await page.goto("/pipeline")
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await expect(page.getByRole("button", { name: "Light mode" })).toHaveAttribute(
+test("the menu stores dark mode and system follows the device", async ({ page }) => {
+  await signIn(page)
+  await expect(page.getByRole("button", { name: "Dark mode" })).toHaveCount(0)
+  await page.getByRole("button", { name: "AR", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Light", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   )
-  await shot(page, "pipeline-dark")
-  await page.goto("/")
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+  await page.getByRole("button", { name: "Dark", exact: true }).click()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await expect(page.getByRole("button", { name: "Dark", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
   await page.reload()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await expect(page.getByRole("button", { name: "Light mode" })).toHaveAttribute(
+  await page.getByRole("button", { name: "AR", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Dark", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   )
+  await page.emulateMedia({ colorScheme: "dark" })
+  await page.getByRole("button", { name: "System", exact: true }).click()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await page.emulateMedia({ colorScheme: "light" })
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+  expect(await page.evaluate(() => localStorage.getItem("accountable-theme"))).toBe("system")
 })

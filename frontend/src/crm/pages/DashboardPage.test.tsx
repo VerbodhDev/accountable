@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, test, vi } from "vitest"
-import { activity, dashboard, task } from "../../test/fixtures"
+import { activity, dashboard, stageEntry, task } from "../../test/fixtures"
 import { ApiError, api } from "../../test/mockApi"
 import { DashboardPage } from "./DashboardPage"
 
@@ -23,17 +23,7 @@ const loaded = dashboard({
       record_name: "Kitchen rollout",
     }),
   ],
-  recent: [
-    activity({ detail: "extra detail" }),
-    activity({
-      id: 8,
-      title: "Stage",
-      detail: "",
-      record_type: "deal",
-      record_id: 3,
-      record_name: "Kitchen rollout",
-    }),
-  ],
+  recent: [activity({ detail: "extra detail" }), stageEntry()],
 })
 
 beforeEach(() => {
@@ -55,6 +45,7 @@ test("the dashboard shows the numbers, the recent work, and the follow-ups", asy
   expect(await screen.findByText("$100.00")).toBeTruthy()
   expect(screen.getByText("Revenue won")).toBeTruthy()
   expect(screen.getByText("extra detail")).toBeTruthy()
+  expect(screen.getByText("Added by Alex Rivera")).toBeTruthy()
   expect(screen.getAllByRole("link", { name: "Kitchen rollout" }).length).toBeGreaterThan(0)
   expect(screen.getByText("Call Ada")).toBeTruthy()
   expect(screen.getByText("Send the proposal")).toBeTruthy()

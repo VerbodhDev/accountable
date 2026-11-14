@@ -4,7 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from sqlalchemy import delete, select, update
 
-from accountable.crm.tables import activities, contacts, deals, organizations, stage_entries
+from accountable.crm.tables import activities, contacts, deals, organizations, people, stage_entries
 
 STAGES = ("New", "Qualified", "Proposal", "Negotiation", "Won", "Lost")
 OPEN_STAGES = ("New", "Qualified", "Proposal", "Negotiation")
@@ -136,7 +136,7 @@ def _contact_org(conn, contact_id: int) -> int | None:
     return row.organization_id
 
 
-def create_organization(conn, payload: dict) -> int:
+def create_organization(conn, payload: dict, person_id: str) -> int:
     name = clean(payload.get("name"))
     if not name:
         raise FieldError("name", "Name is required")
@@ -146,12 +146,14 @@ def create_organization(conn, payload: dict) -> int:
             website=clean(payload.get("website")),
             industry=clean(payload.get("industry")),
             notes=clean(payload.get("notes")),
+            added_by=person_id,
+            updated_by=person_id,
         )
     )
     return int(result.inserted_primary_key[0])
 
 
-def update_organization(conn, org_id: int, payload: dict) -> None:
+def update_organization(conn, org_id: int, payload: dict, person_id: str) -> None:
     current = (
         conn.execute(select(organizations).where(organizations.c.id == org_id)).mappings().first()
     )
@@ -166,11 +168,11 @@ def update_organization(conn, org_id: int, payload: dict) -> None:
     for field in ("website", "industry", "notes"):
         if field in payload:
             values[field] = clean(payload.get(field))
-    if values:
-        conn.execute(update(organizations).where(organizations.c.id == org_id).values(**values))
+    values["updated_by"] = person_id
+    conn.execute(update(organizations).where(organizations.c.id == org_id).values(**values))
 
 
-def create_contact(conn, payload: dict) -> int:
+def create_contact(conn, payload: dict, person_id: str) -> int:
     name = clean(payload.get("name"))
     if not name:
         raise FieldError("name", "Name is required")
@@ -186,12 +188,14 @@ def create_contact(conn, payload: dict) -> int:
             job_title=clean(payload.get("job_title")),
             organization_id=organization_id,
             status=status,
+            added_by=person_id,
+            updated_by=person_id,
         )
     )
     return int(result.inserted_primary_key[0])
 
 
-def update_contact(conn, contact_id: int, payload: dict) -> None:
+def update_contact(conn, contact_id: int, payload: dict, person_id: str) -> None:
     current = conn.execute(select(contacts).where(contacts.c.id == contact_id)).mappings().first()
     if current is None:
         return
@@ -211,8 +215,8 @@ def update_contact(conn, contact_id: int, payload: dict) -> None:
         values["organization_id"] = organization_id
     if "status" in payload:
         values["status"] = parse_status(payload.get("status"), required=True)
-    if values:
-        conn.execute(update(contacts).where(contacts.c.id == contact_id).values(**values))
+    values["updated_by"] = person_id
+    conn.execute(update(contacts).where(contacts.c.id == contact_id).values(**values))
 
 
 def _check_contact_for_org(conn, organization_id: int, contact_id: int | None) -> None:
@@ -223,7 +227,7 @@ def _check_contact_for_org(conn, organization_id: int, contact_id: int | None) -
         raise FieldError("contact_id", "The main contact must work at that organization")
 
 
-def create_deal(conn, payload: dict, today: date) -> int:
+def create_deal(conn, payload: dict, today: date, person_id: str) -> int:
     name = clean(payload.get("name"))
     if not name:
         raise FieldError("name", "Name is required")
@@ -258,6 +262,8 @@ def create_deal(conn, payload: dict, today: date) -> int:
             probability_hand_set=sent_probability,
             close_date=close_date,
             position=0,
+            added_by=person_id,
+            updated_by=person_id,
         )
     )
     return int(result.inserted_primary_key[0])
@@ -319,7 +325,7 @@ def _insert_at(ids: list[int], deal_id: int, position) -> None:
     ids.insert(index, deal_id)
 
 
-def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
+def update_deal(conn, deal_id: int, payload: dict, today: date, person_id: str) -> None:
     current = conn.execute(select(deals).where(deals.c.id == deal_id)).mappings().first()
     if current is None:
         return
@@ -329,6 +335,7 @@ def update_deal(conn, deal_id: int, payload: dict, today: date) -> None:
         "organization_id": organization_id,
         "contact_id": contact_id,
         "stage": stage,
+        "updated_by": person_id,
         **_deal_field_changes(current, payload, stage, stage_changed, today),
     }
     position = payload.get("position") if "position" in payload else None
@@ -409,7 +416,7 @@ def _activity_values(payload: dict, current: dict | None, today: date) -> dict:
     }
 
 
-def create_activity(conn, payload: dict, today: date) -> int:
+def create_activity(conn, payload: dict, today: date, person_id: str) -> int:
     if payload.get("contact_id") is not None:
         _contact_org(conn, payload["contact_id"])
     if payload.get("deal_id") is not None:
@@ -418,11 +425,13 @@ def create_activity(conn, payload: dict, today: date) -> int:
             raise FieldError("deal_id", "Choose a deal")
     values = _activity_values(payload, None, today)
     values.pop("today")
+    values["added_by"] = person_id
+    values["updated_by"] = person_id
     result = conn.execute(activities.insert().values(**values))
     return int(result.inserted_primary_key[0])
 
 
-def update_activity(conn, activity_id: int, payload: dict, today: date) -> None:
+def update_activity(conn, activity_id: int, payload: dict, today: date, person_id: str) -> None:
     current = (
         conn.execute(select(activities).where(activities.c.id == activity_id)).mappings().first()
     )
@@ -436,6 +445,7 @@ def update_activity(conn, activity_id: int, payload: dict, today: date) -> None:
             raise FieldError("deal_id", "Choose a deal")
     values = _activity_values(payload, current, today)
     values.pop("today")
+    values["updated_by"] = person_id
     conn.execute(update(activities).where(activities.c.id == activity_id).values(**values))
 
 
@@ -604,6 +614,10 @@ def dashboard(conn, today: date) -> dict:
     }
 
 
+def person_names(conn) -> dict[str, str]:
+    return {row.id: row.name for row in conn.execute(select(people.c.id, people.c.name))}
+
+
 def _record_name(conn, record_type: str, record_id: int) -> str:
     if record_type == "contact":
         row = conn.execute(select(contacts.c.name).where(contacts.c.id == record_id)).first()
@@ -613,6 +627,7 @@ def _record_name(conn, record_type: str, record_id: int) -> str:
 
 
 def recent_activity(conn, limit: int = 10) -> list[dict]:
+    names = person_names(conn)
     rows = []
     for row in conn.execute(select(activities)).mappings().all():
         record_type = "contact" if row["contact_id"] else "deal"
@@ -627,6 +642,7 @@ def recent_activity(conn, limit: int = 10) -> list[dict]:
                 "record_type": record_type,
                 "record_id": record_id,
                 "record_name": _record_name(conn, record_type, record_id),
+                "added_by_name": names.get(row["added_by"]),
             }
         )
     for row in conn.execute(select(stage_entries)).mappings().all():

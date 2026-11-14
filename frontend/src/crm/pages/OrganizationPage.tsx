@@ -77,6 +77,12 @@ export function OrganizationPage() {
               <b>{org.notes}</b>
             </li>
           ) : null}
+          {org.added_by_name ? (
+            <li>
+              <span>Added by</span>
+              <b>{org.added_by_name}</b>
+            </li>
+          ) : null}
         </ul>
       </section>
       <section className="stack">

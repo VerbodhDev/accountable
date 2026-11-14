@@ -2,6 +2,43 @@ def _items(client, path):
     return client.get(path).json()["items"]
 
 
+def test_created_record_stores_the_signed_in_person(api):
+    client, path = api
+    jordan = client.post(
+        "/api/session",
+        json={"email": "jordan.blake@example.com", "password": "local-only"},
+    )
+    assert jordan.status_code == 200
+    client.headers["Authorization"] = f"Bearer {jordan.json()['token']}"
+    created = client.post(
+        "/api/organizations",
+        json={"name": "Jordan Co", "added_by": "alex-rivera"},
+    ).json()
+    assert created["added_by_name"] == "Jordan Blake"
+    assert "updated_by" not in created
+    sam = client.post(
+        "/api/session",
+        json={"email": "sam.patel@example.com", "password": "local-only"},
+    )
+    client.headers["Authorization"] = f"Bearer {sam.json()['token']}"
+    patched = client.patch(f"/api/organizations/{created['id']}", json={"notes": "Later"}).json()
+    assert patched["added_by_name"] == "Jordan Blake"
+    assert "updated_by" not in patched
+
+    from accountable.crm.tables import organizations
+    from accountable.db import get_engine
+    from sqlalchemy import select
+
+    with get_engine(path).connect() as conn:
+        row = conn.execute(
+            select(organizations.c.added_by, organizations.c.updated_by).where(
+                organizations.c.id == created["id"]
+            )
+        ).one()
+    assert row.added_by == "jordan-blake"
+    assert row.updated_by == "sam-patel"
+
+
 def test_bad_field_missing_and_delete(api):
     client, _path = api
     bad = client.post("/api/organizations", json={"name": "  "})

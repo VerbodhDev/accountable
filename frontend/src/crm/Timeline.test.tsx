@@ -51,6 +51,7 @@ test("activities and stage entries show their own facts", () => {
     { contactId: 2 },
   )
   expect(screen.getByText("Spoke about the kitchen")).toBeTruthy()
+  expect(screen.getAllByText("Added by Alex Rivera")).toHaveLength(2)
   expect(screen.getByText("Follow-up Nov 1")).toBeTruthy()
   expect(screen.getAllByRole("link", { name: "Kitchen rollout" }).length).toBeGreaterThan(0)
   expect(screen.getByText("Proposal")).toBeTruthy()

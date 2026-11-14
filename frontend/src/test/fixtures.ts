@@ -17,6 +17,7 @@ export const organization: Organization = {
   website: "northwind.example",
   industry: "Food",
   notes: "Key account",
+  added_by_name: "Alex Rivera",
 }
 
 export const contact: Contact = {
@@ -28,6 +29,7 @@ export const contact: Contact = {
   organization_id: 1,
   organization_name: "Northwind",
   status: "Lead",
+  added_by_name: "Alex Rivera",
 }
 
 export function makeDeal(overrides: Partial<Deal> = {}): Deal {
@@ -46,6 +48,7 @@ export function makeDeal(overrides: Partial<Deal> = {}): Deal {
     position: 0,
     late: true,
     expected_cents: 62500,
+    added_by_name: "Alex Rivera",
     ...overrides,
   }
 }
@@ -68,6 +71,7 @@ export function activity(overrides: Partial<TimelineItem> = {}): TimelineItem {
     record_type: "contact",
     record_id: 2,
     record_name: "Ada West",
+    added_by_name: "Alex Rivera",
     ...overrides,
   }
 }
