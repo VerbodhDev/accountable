@@ -255,6 +255,8 @@ test.describe("with a small known dataset", () => {
     await expect(page.getByText("No follow-ups due.")).toBeVisible();
     await expect(page.getByText("Nothing has happened yet.")).toBeVisible();
     await expect(section(page, "Open pipeline")).toContainText("0% of open pipeline");
+    await expect(page.getByText("Nothing owed.")).toBeVisible();
+    await expect(page.getByText("No payments in the last 12 months.")).toBeVisible();
     await expect(page.getByText("NaN")).toHaveCount(0);
     await expect(page.getByText("Infinity")).toHaveCount(0);
   });
@@ -296,17 +298,102 @@ test.describe("with the sample data", () => {
     await expect(funnel.locator(".recharts-tooltip-wrapper")).toContainText("reached New");
   });
 
-  test("the dashboard fits 1440 by 900 with no page scrolling", async ({ page }) => {
+  test("the dashboard's own part fits 1440 by 900 with no scrolling, and the Money section fits below it", async ({
+    page,
+  }) => {
     await page.goto("/");
     await expect(page.getByTestId("revenue-this-month")).toBeVisible();
+    for (const name of ["Revenue won", "Open pipeline", "Deals won", "Sales funnel", "Follow-ups", "Recent activity"]) {
+      await expect(section(page, name), name).toBeInViewport({ ratio: 1 });
+    }
+    const money = page.getByRole("region", { name: "Money" });
+    await expect(money.getByRole("link", { name: /^What we owe/ })).toBeVisible();
     const sizes = await page.evaluate(() => ({
-      height: document.documentElement.scrollHeight,
       windowHeight: window.innerHeight,
       width: document.documentElement.scrollWidth,
       windowWidth: window.innerWidth,
     }));
-    expect(sizes.height).toBeLessThanOrEqual(sizes.windowHeight);
     expect(sizes.width).toBeLessThanOrEqual(sizes.windowWidth);
+    // Sections other areas add come below that screen (H10).
+    const moneyBox = (await money.boundingBox())!;
+    expect(moneyBox.y).toBeGreaterThanOrEqual(sizes.windowHeight - 40);
+
+    // The heading and the cash flow's row fit a window, and so does everything below the row.
+    const cashFlow = page.getByRole("region", { name: "Cash flow" });
+    await expect(cashFlow.getByRole("heading", { name: "Cash flow" })).toBeVisible();
+    const rowBox = (await cashFlow.boundingBox())!;
+    expect(rowBox.y + rowBox.height - moneyBox.y).toBeLessThanOrEqual(sizes.windowHeight);
+    const sidesTop = (await page.getByRole("region", { name: "Owed to us" }).boundingBox())!.y;
+    expect(moneyBox.y + moneyBox.height - sidesTop).toBeLessThanOrEqual(sizes.windowHeight);
+
+    // Scrolled so the section's top is at the window's top, as a reader scrolling to it would.
+    await money.evaluate((section) => window.scrollTo(0, section.getBoundingClientRect().top + window.scrollY));
+    await expect(money.getByRole("heading", { level: 2, name: "Money" })).toBeInViewport({ ratio: 1 });
+    await expect(cashFlow).toBeInViewport({ ratio: 1 });
+
+    // Invoices' side and bills' beside it show once the page is scrolled to them.
+    await page.getByRole("region", { name: "Spending by category" }).scrollIntoViewIfNeeded();
+    for (const name of ["Owed to us", "Payments received", "What we owe", "Spending by category"]) {
+      await expect(page.getByRole("region", { name }), name).toBeInViewport({ ratio: 1 });
+    }
+  });
+
+  test("the Money section has what customers owe us and what we owe suppliers side by side, row for row", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const panel = async (name: string) => {
+      const region = page.getByRole("region", { name });
+      await expect(region).toBeVisible();
+      return (await region.boundingBox())!;
+    };
+    for (const [ours, theirs] of [
+      ["Owed to us", "What we owe"],
+      ["Payments received", "Spending by category"],
+    ]) {
+      const [left, right] = [await panel(ours), await panel(theirs)];
+      expect(right.x, theirs).toBeGreaterThan(left.x + left.width);
+      expect(right.y, theirs).toBe(left.y);
+      expect(right.width, theirs).toBe(left.width);
+      expect(right.height, theirs).toBe(left.height);
+    }
+    expect((await panel("Payments received")).y).toBeGreaterThan((await panel("Owed to us")).y);
+  });
+
+  test("the Money section owes what the invoices owe, with How late, and 12 months of payments marked so far", async ({
+    page,
+    request,
+  }) => {
+    const listed: { shows_as: string; owed_cents: number }[] = await (await request.get(`${API}/invoices`)).json();
+    const owing = listed.filter((row) => row.owed_cents > 0);
+    const total = owing.reduce((sum, row) => sum + row.owed_cents, 0);
+    const overdue = owing.filter((row) => row.shows_as === "overdue");
+    const dollars = (cents: number) =>
+      `$${Math.floor(cents / 100).toLocaleString("en-US")}.${String(cents % 100).padStart(2, "0")}`;
+
+    await page.goto("/");
+    const owed = page.getByRole("region", { name: "Owed to us" });
+    await owed.scrollIntoViewIfNeeded();
+    await expect(owed).toContainText(`Owed to us${dollars(total)}${owing.length} invoices`);
+    const overdueLink = owed.getByRole("link", { name: /Overdue/ });
+    await expect(overdueLink).toContainText(dollars(overdue.reduce((sum, row) => sum + row.owed_cents, 0)));
+    await expect(overdueLink).toContainText(`${overdue.length} invoice`);
+    await expect(owed.getByRole("list", { name: "How late" }).getByRole("listitem")).toHaveText([
+      /^Not yet due/,
+      /^1 to 30 days/,
+      /^31 to 60 days/,
+      /^61 to 90 days/,
+      /^Over 90 days/,
+    ]);
+
+    // Under Owed to us, so it may run past the bottom of the window until scrolled to.
+    const received = page.getByRole("region", { name: "Payments received" });
+    await received.scrollIntoViewIfNeeded();
+    await expect(received.locator(".recharts-bar-rectangle")).toHaveCount(12);
+    await expect(received.getByText("so far")).toBeVisible();
+    const bars = (await received.locator(".recharts-surface").boundingBox())!;
+    await page.mouse.move(bars.x + bars.width * 0.5, bars.y + bars.height * 0.8);
+    await expect(received.locator(".recharts-tooltip-wrapper")).toContainText(/\d+ payments?, /);
   });
 
   test("follow-ups and recent activity each scroll by themselves", async ({ page }) => {

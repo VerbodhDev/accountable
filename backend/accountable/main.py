@@ -5,8 +5,9 @@ the shared app's routes on their own SQLite database, with a stand-in for Supaba
 """
 
 import os
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath
 
 import jwt
@@ -18,19 +19,104 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
-from starlette.types import Scope
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from accountable import api, auth, cli, db, search, settings, users
+from accountable.bills import cash as bills_cash
+from accountable.bills import router as bills
+from accountable.bills import schemas as bills_schemas
+from accountable.bills import tables as bills_tables
+from accountable.cash import Cash
+from accountable.cashflow import router as cashflow
+from accountable.cashflow import schemas as cashflow_schemas
 from accountable.company import router as company_settings
 from accountable.company import schemas as company_schemas
+from accountable.company.documents import Numbered
+from accountable.crm import cash as crm_cash
 from accountable.crm import schemas as crm_schemas
 from accountable.crm import search as crm_search
 from accountable.crm.routers import activities, contacts, dashboard, deals, meta, organizations
+from accountable.holds import Hold
+from accountable.invoices import cash as invoices_cash
+from accountable.invoices import schemas as invoices_schemas
+from accountable.invoices import tables as invoices_tables
+from accountable.invoices.routers import invoices, money, payments, pdf
 from accountable.products import router as products
 from accountable.products import schemas as products_schemas
 from accountable.products import search as products_search
+from accountable.quotes import router as quotes
+from accountable.quotes import schemas as quotes_schemas
+from accountable.quotes import tables as quotes_tables
 
 FRONTEND = db.ROOT / "frontend" / "dist"
+
+
+@dataclass(frozen=True)
+class Area:
+    """A business area, as the app puts it together."""
+
+    routers: Sequence[APIRouter]
+    """Its routes, which start with the area's own words, such as /api/products, and no other area's."""
+    messages: Mapping[str, str]
+    """The messages for its fields, for a request that reached one of its routes."""
+    kinds: Sequence[search.Kind] = ()
+    """What the top bar's search finds among its records."""
+    holds: Sequence[Hold] = ()
+    """Which of its records hold a deal or an organization, so that can't be deleted (D4)."""
+    cash: Cash | None = None
+    """The money it moves or expects, for the cash flow (Y1 to Y22)."""
+    numbered: Sequence[Numbered] = ()
+    """Where its documents keep the numbers they take, so a new prefix can't match one (B6)."""
+
+    @property
+    def route_starts(self) -> set[str]:
+        """The words its routes start with, such as {"products"}."""
+        return {
+            route_start(f"/api{route.path}")
+            for router in self.routers
+            for route in router.routes
+            if isinstance(route, APIRoute)
+        }
+
+
+# Every area, in the order the top bar's search shows its results. A later area joins the end.
+AREAS = [
+    Area(
+        routers=[meta.router, organizations.router, contacts.router, deals.router, activities.router, dashboard.router],
+        messages=crm_schemas.FIELD_MESSAGES,
+        kinds=crm_search.KINDS,
+        cash=crm_cash.CASH,
+    ),
+    Area(routers=[products.router], messages=products_schemas.FIELD_MESSAGES, kinds=products_search.KINDS),
+    Area(routers=[company_settings.router], messages=company_schemas.FIELD_MESSAGES),
+    Area(
+        routers=[quotes.router],
+        messages=quotes_schemas.FIELD_MESSAGES,
+        holds=quotes_tables.HOLDS,
+        numbered=quotes_tables.NUMBERED,
+    ),
+    # Money's route comes first, so /invoices/money is never read as an invoice's id.
+    Area(
+        routers=[money.router, invoices.router, payments.router, pdf.router],
+        messages=invoices_schemas.FIELD_MESSAGES,
+        holds=invoices_tables.HOLDS,
+        cash=invoices_cash.CASH,
+        numbered=invoices_tables.NUMBERED,
+    ),
+    # Bills aren't searched from the top bar (K1), and each one holds its supplier (D4).
+    Area(routers=[bills.router], messages=bills_schemas.FIELD_MESSAGES, holds=bills_tables.HOLDS, cash=bills_cash.CASH),
+    # The cash flow keeps no records, and reads every area's money from the app.
+    Area(routers=[cashflow.router], messages=cashflow_schemas.FIELD_MESSAGES),
+]
+
+
+def route_start(path: str) -> str:
+    """The word a route's path starts with after /api, such as "products", or "" for /api itself."""
+    parts = PurePosixPath(path).parts
+    return parts[2] if parts[1:2] == ("api",) and len(parts) > 2 else ""
+
+
+_MESSAGES = {start: area.messages for area in AREAS for start in area.route_starts}
 
 
 def make_app(
@@ -39,12 +125,16 @@ def make_app(
     """The local copy with no settings, or the shared app, serving the built frontend as well as the API."""
     app = FastAPI(title="Accountable", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan(shared))
     app.state.sign_in = auth.LocalSignIn() if shared is None else auth.SupabaseSignIn(shared, keys)
+    app.state.holds = [hold for area in AREAS for hold in area.holds]
+    app.state.cash = [area.cash for area in AREAS if area.cash is not None]
+    app.state.numbered = [numbered for area in AREAS for numbered in area.numbered]
 
     # Each middleware added goes outside the ones before it, so a request meets these
-    # in the opposite order: the host, then the token, then the body's type. No
-    # cross-origin middleware is added, and tokens travel in a header, never a cookie,
-    # so another website in the same browser can't make a signed-in request.
+    # in the opposite order: the host, then the token, then the body's size, then its
+    # type. No cross-origin middleware is added, and tokens travel in a header, never a
+    # cookie, so another website in the same browser can't make a signed-in request.
     app.middleware("http")(_json_only)
+    app.add_middleware(BodyLimit)
     app.add_middleware(auth.RequireSignIn, open_paths=_local_sign_in_paths() if shared is None else ())
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts())
     app.exception_handler(RequestValidationError)(_invalid_request)
@@ -72,9 +162,10 @@ def _local_sign_in_paths() -> list[str]:
 def _signed_in_routes() -> APIRouter:
     routes = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])
     routes.include_router(auth.router)
-    for module in (meta, organizations, contacts, deals, activities, dashboard, products, company_settings):
-        routes.include_router(module.router)
-    routes.include_router(search.router([*crm_search.KINDS, *products_search.KINDS]))
+    for area in AREAS:
+        for router in area.routers:
+            routes.include_router(router)
+    routes.include_router(search.router([kind for area in AREAS for kind in area.kinds]))
     return routes
 
 
@@ -114,6 +205,54 @@ class BuiltFrontend(StaticFiles):
         return response
 
 
+MAX_BODY_BYTES = 2 * 1024 * 1024
+TOO_BIG = "That's too big to send."
+
+
+class BodyLimit:
+    """Refuses a body over 2 MB with a 413. A logo of 1 MB in base64 is the largest the app
+    sends. The bytes are counted as they arrive, so a body sent without a Content-Length, or
+    with a false one, is caught too, then handed on to the routes as one piece."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        body = await self._read(receive)
+        if body is None:
+            await JSONResponse({"detail": TOO_BIG}, status_code=413)(scope, receive, send)
+            return
+        handed_on = False
+
+        async def replay() -> Message:
+            nonlocal handed_on
+            if handed_on:
+                return await receive()
+            handed_on = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+    @staticmethod
+    async def _read(receive: Receive) -> bytes | None:
+        """The whole body, or None once it passes the limit."""
+        chunks, size, more = [], 0, True
+        while more:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > MAX_BODY_BYTES:
+                return None
+            chunks.append(chunk)
+            more = message.get("more_body", False)
+        return b"".join(chunks)
+
+
 async def _json_only(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH"):
         content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
@@ -124,13 +263,9 @@ async def _json_only(request: Request, call_next):
 
 def _area_messages(request: Request) -> Mapping[str, str]:
     """The messages for the fields of the area whose route the request reached. The CRM
-    and products both have a description, and only the CRM's is required."""
-    route = PurePosixPath(request.url.path).parts[:3]
-    if route == ("/", "api", "products"):
-        return products_schemas.FIELD_MESSAGES
-    if route == ("/", "api", "settings"):
-        return company_schemas.FIELD_MESSAGES
-    return crm_schemas.FIELD_MESSAGES
+    and products both have a description, and only the CRM's is required. Routes that
+    belong to no area, such as search's, have messages of their own or none."""
+    return _MESSAGES.get(route_start(request.url.path), {})
 
 
 async def _invalid_request(request: Request, error: RequestValidationError):

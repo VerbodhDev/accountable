@@ -1,8 +1,10 @@
+import { defaultScheduler, notifyManager } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { holdSaves, mockApi, renderApp, user, type Call } from "../test-utils";
+import type { SampleLook } from "./documentPreview";
 import type { CompanySettings } from "./settings";
 import { SettingsPage } from "./SettingsPage";
 
@@ -20,6 +22,11 @@ const SAMPLE: CompanySettings = {
   payment_terms_days: 30,
   quote_prefix: "QT-",
   invoice_prefix: "INV-",
+  invoice_design: "banner",
+  accent_color: "#0E6B6B",
+  logo: null,
+  opening_balance_cents: 4_000_000,
+  opening_balance_on: "2025-12-01",
   updated_at: "2026-11-05T12:00:00Z",
   updated_by: DANA,
 };
@@ -35,9 +42,23 @@ const DEFAULTS: CompanySettings = {
   payment_terms_days: 30,
   quote_prefix: "QT-",
   invoice_prefix: "INV-",
+  invoice_design: "classic",
+  accent_color: "#073B4C",
+  logo: null,
+  opening_balance_cents: null,
+  opening_balance_on: null,
   updated_at: "2026-11-01T12:00:00Z",
   updated_by: null,
 };
+
+/** Stands in for the invoices area's sample, which App.tsx hands the page, saying what it was given. */
+function Preview({ look }: { look: SampleLook }) {
+  return (
+    <p data-testid="preview">
+      {look.design} {look.accent} {look.logo ? `logo ${look.logo.width}x${look.logo.height}` : "no logo"}
+    </p>
+  );
+}
 
 const BOXES = [
   "Company name",
@@ -49,6 +70,8 @@ const BOXES = [
   "Payment terms",
   "Quote prefix",
   "Invoice prefix",
+  "Opening balance",
+  "As of",
 ];
 
 function box(label: string) {
@@ -62,7 +85,7 @@ function saveButton() {
 /** The page, once the settings have been read. */
 async function open(routes: Record<string, unknown>) {
   const calls = mockApi({ "GET /settings": SAMPLE, ...routes });
-  const view = renderApp(<SettingsPage />);
+  const view = renderApp(<SettingsPage preview={Preview} />);
   await screen.findByLabelText("Company name");
   return { calls, ...view };
 }
@@ -94,6 +117,36 @@ function messageBeside(label: string) {
   return box(label).closest("div.flex-col")?.querySelector('[role="alert"]')?.textContent;
 }
 
+/**
+ * Holds back TanStack Query's news that the settings changed, so the page goes on with the ones it
+ * last heard of until released. The news comes on a timer, which a save's reply can beat.
+ */
+function holdNews() {
+  const held: (() => void)[] = [];
+  notifyManager.setScheduler((news) => held.push(news));
+  onTestFinished(() => notifyManager.setScheduler(defaultScheduler));
+  return () =>
+    act(() => {
+      notifyManager.setScheduler(defaultScheduler);
+      for (const news of held) news();
+    });
+}
+
+/** Every value the page puts in a box from now on, so a value it shows only for a moment is caught too. */
+function valuesPutIn(input: HTMLInputElement) {
+  const put: string[] = [];
+  const { get, set } = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value") ?? {};
+  Object.defineProperty(input, "value", {
+    configurable: true,
+    get: () => get?.call(input),
+    set: (value: string) => {
+      put.push(value);
+      set?.call(input, value);
+    },
+  });
+  return put;
+}
+
 describe("the Company settings page", () => {
   it("fills every box from the settings", async () => {
     await open({});
@@ -108,6 +161,8 @@ describe("the Company settings page", () => {
       "30",
       "QT-",
       "INV-",
+      "40000.00",
+      "2025-12-01",
     ]);
   });
 
@@ -117,6 +172,8 @@ describe("the Company settings page", () => {
     expect(panel("Company").getByLabelText("Address")).toBeTruthy();
     expect(panel("Tax").getByLabelText("Tax rate")).toBeTruthy();
     expect(panel("Quotes and invoices").getByLabelText("Invoice prefix")).toBeTruthy();
+    expect(panel("Cash").getByLabelText("Opening balance")).toBeTruthy();
+    expect(panel("Cash").getByLabelText("As of")).toBeTruthy();
   });
 
   it("says what the rate and the terms are in, and hints at what a prefix can hold", async () => {
@@ -232,6 +289,10 @@ describe("saving", () => {
       payment_terms_days: 45,
       quote_prefix: "QT-",
       invoice_prefix: "INV-",
+      invoice_design: "banner",
+      accent_color: "#0E6B6B",
+      opening_balance_cents: 4_000_000,
+      opening_balance_on: "2025-12-01",
     });
   });
 
@@ -252,6 +313,23 @@ describe("saving", () => {
     expect(screen.getByText(/^Last changed by/).textContent).toBe("Last changed by Alex Rivera on Nov 6, 2026");
     // The form shows the rate as saved, without its trailing zero (B7).
     expect(box("Tax rate").value).toBe("8.5");
+  });
+
+  it("shows what was saved, never the settings from before, however late the page hears of the save", async () => {
+    const saved = vi.spyOn(toast, "success");
+    await open(savingBackend(SAMPLE, { ...SAMPLE, tax_rate: "8.5", updated_by: ALEX }));
+    await retype("Tax rate", "8.50");
+    const shown = valuesPutIn(box("Tax rate"));
+    const hear = holdNews();
+    await user().click(saveButton());
+
+    await waitFor(() => expect(saved).toHaveBeenCalledWith("Settings saved."));
+    // The form has taken the reply, and the page still has the settings from before the save.
+    await waitFor(() => expect(box("Tax rate").value).toBe("8.5"));
+    await hear();
+    expect(screen.getByText(/^Last changed by/).textContent).toMatch(/^Last changed by Alex Rivera/);
+    expect(box("Tax rate").value).toBe("8.5");
+    expect(shown).not.toContain("8.875");
   });
 
   it("saves when Enter is pressed in a one-line box", async () => {
@@ -310,13 +388,123 @@ describe("saving", () => {
   });
 });
 
+const OPENING_HINT =
+  "The cash in the bank at the start of that day. The dashboard's cash flow counts from it. " +
+  "Put a minus sign in front if the account was overdrawn.";
+
+function setDate(label: string, value: string) {
+  fireEvent.change(box(label), { target: { value } });
+}
+
+describe("the Cash panel", () => {
+  it("shows $ before the amount, and the hint for both boxes", async () => {
+    await open({});
+    expect(box("Opening balance").previousElementSibling?.textContent).toBe("$");
+    expect(box("As of").type).toBe("date");
+    expect(screen.getByRole("textbox", { name: "Opening balance", description: OPENING_HINT })).toBeTruthy();
+    expect(box("As of").getAttribute("aria-describedby")).toBe(box("Opening balance").getAttribute("aria-describedby"));
+  });
+
+  it.each([
+    ["abc", "2025-12-01", "Opening balance", "Enter an amount in dollars and cents, such as 25,000.00"],
+    ["1,000,000,000,000.01", "2025-12-01", "Opening balance", "Keep the opening balance within $1 trillion either way"],
+    ["", "2025-12-01", "Opening balance", "Enter the opening balance"],
+    ["40,000.00", "", "As of", "Choose the date of the opening balance"],
+  ])("shows an amount of %j as of %j its message beside %s, and sends nothing", async (amount, on, label, message) => {
+    const { calls } = await open({});
+    await retype("Opening balance", amount);
+    setDate("As of", on);
+    await user().click(saveButton());
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(messageBeside(label)).toBe(message);
+    expect(box(label).getAttribute("aria-invalid")).toBe("true");
+    expect(patches(calls)).toEqual([]);
+  });
+
+  it("refuses a date after the page's today, and sends nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 5, 12, 0) });
+    onTestFinished(() => void vi.useRealTimers());
+    const { calls } = await open({});
+    setDate("As of", "2026-11-06");
+    await user().click(saveButton());
+
+    expect(await screen.findByText("The date can't be in the future")).toBeTruthy();
+    expect(messageBeside("As of")).toBe("The date can't be in the future");
+    expect(patches(calls)).toEqual([]);
+  });
+
+  it("saves other settings with a saved date that's after the page's today, as the backend keeps it", async () => {
+    // Saved while the computer's clock was a day ahead, and it's since been put right.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 5, 12, 0) });
+    onTestFinished(() => void vi.useRealTimers());
+    const ahead = { ...SAMPLE, opening_balance_on: "2026-11-06" };
+    const { calls } = await open(savingBackend(ahead, { ...ahead, phone: "(718) 555-0199" }));
+    await retype("Phone", "(718) 555-0199");
+    await user().click(saveButton());
+
+    await waitFor(() => expect(patches(calls)).toHaveLength(1));
+    expect(patches(calls)[0].body).toMatchObject({ phone: "(718) 555-0199", opening_balance_on: "2026-11-06" });
+    expect(messageBeside("As of")).toBeUndefined();
+  });
+
+  it("sends an amount with a minus sign in front as cents below zero, as of today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 5, 12, 0) });
+    onTestFinished(() => void vi.useRealTimers());
+    const { calls } = await open({ "PATCH /settings": SAMPLE });
+    await retype("Opening balance", "-4,250.00");
+    setDate("As of", "2026-11-05");
+    await user().click(saveButton());
+
+    await waitFor(() => expect(patches(calls)).toHaveLength(1));
+    expect(patches(calls)[0].body).toMatchObject({ opening_balance_cents: -425000, opening_balance_on: "2026-11-05" });
+  });
+
+  it("sends both as null when both are cleared, which removes the opening balance", async () => {
+    const { calls } = await open(
+      savingBackend(SAMPLE, { ...SAMPLE, opening_balance_cents: null, opening_balance_on: null }),
+    );
+    await retype("Opening balance", "");
+    setDate("As of", "");
+    await user().click(saveButton());
+
+    await waitFor(() => expect(patches(calls)).toHaveLength(1));
+    expect(patches(calls)[0].body).toMatchObject({ opening_balance_cents: null, opening_balance_on: null });
+    await waitFor(() => expect(box("Opening balance").value).toBe(""));
+    expect(box("As of").value).toBe("");
+  });
+
+  it("puts the backend's messages beside their boxes", async () => {
+    await open({
+      "PATCH /settings": () => ({
+        status: 422,
+        body: { detail: "Check the form.", fields: { opening_balance_on: "The date can't be in the future" } },
+      }),
+    });
+    await user().click(saveButton());
+
+    expect(await screen.findByText("The date can't be in the future")).toBeTruthy();
+    expect(messageBeside("As of")).toBe("The date can't be in the future");
+  });
+
+  it("shows what was saved after a save, below zero too", async () => {
+    await open(savingBackend(SAMPLE, { ...SAMPLE, opening_balance_cents: -125050, opening_balance_on: "2025-11-01" }));
+    await retype("Opening balance", "-1,250.5");
+    setDate("As of", "2025-11-01");
+    await user().click(saveButton());
+
+    await waitFor(() => expect(box("Opening balance").value).toBe("-1250.50"));
+    expect(box("As of").value).toBe("2025-11-01");
+  });
+});
+
 describe("reading the settings", () => {
   it("says so if they can't be read, offers Try again, and shows no form to save blanks from", async () => {
     let broken = true;
     mockApi({
       "GET /settings": () => (broken ? { status: 500, body: { detail: "Something went wrong." } } : { body: SAMPLE }),
     });
-    renderApp(<SettingsPage />);
+    renderApp(<SettingsPage preview={Preview} />);
 
     expect(await screen.findByText("Couldn't load this.")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();

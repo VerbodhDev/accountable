@@ -21,7 +21,17 @@ import {
 const ONE_START_MS = 120_000;
 test.describe.configure({ mode: "serial", timeout: ONE_START_MS });
 
-const SCREENS = ["/", "/organizations", "/contacts", "/deals", "/pipeline", "/products"];
+const SCREENS = [
+  "/",
+  "/organizations",
+  "/contacts",
+  "/deals",
+  "/pipeline",
+  "/products",
+  "/quotes",
+  "/invoices",
+  "/bills",
+];
 const TEAMMATES = ["Alex Rivera", "Dana Whitfield", "Theo Brandt", "robin@accountable.example"];
 
 let folder: ReturnType<typeof makeCopyFolder>;
@@ -134,11 +144,38 @@ test("npm run seed with the app running brings back the sample data and keeps th
   await expect(page.getByText("No organizations match.")).toBeVisible();
 
   await goto(page, "/organizations");
-  await expect(page.locator("tbody tr")).toHaveCount(24);
+  await expect(page.locator("tbody tr")).toHaveCount(30);
 
   await goto(page, "/products");
   await expect(page.locator("tbody tr")).toHaveCount(10);
   await expect(page.getByRole("checkbox", { name: "Show archived (2)" })).not.toBeChecked();
+
+  // The sample quotes and invoices, with payments against them, filling invoices' side of the Money section (M3).
+  await goto(page, "/quotes");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await goto(page, "/invoices");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await goto(page, "/");
+  const owed = page.getByRole("region", { name: "Owed to us" });
+  await expect(owed.getByRole("link", { name: /^Overdue/ })).toContainText(/\$[1-9][\d,]*\.\d\d/);
+  await expect(page.getByRole("region", { name: "Payments received" }).getByRole("img")).toBeVisible();
+
+  // The sample bills: unpaid ones, overdue ones among them, and every part of the Money section full (M3).
+  await goto(page, "/bills");
+  await expect(page.getByRole("button", { name: /^All/ })).toHaveAccessibleName("All (85)");
+  await expect(page.getByRole("button", { name: /^Overdue/ })).toHaveAccessibleName(/^Overdue \([3-9]\)$/);
+  await expect(page.locator("tbody tr").first().getByText("Overdue")).toBeVisible();
+  await goto(page, "/");
+  const money = page.getByRole("region", { name: "Money" });
+  await expect(money.getByRole("link", { name: /^What we owe/ })).toContainText(/\$[1-9][\d,]*\.\d\d/);
+  await expect(
+    money.getByRole("region", { name: "What we owe" }).getByRole("link", { name: /^Overdue/ }),
+  ).toContainText(/\$[1-9][\d,]*\.\d\d/);
+  await expect(money.getByRole("img", { name: /bills due from today/ })).toBeVisible();
+  await expect(money.getByRole("img", { name: /^Spending by category/ })).toBeVisible();
+  const months = money.getByRole("table", { name: "Spending by category for the last 12 months" }).locator("tbody tr");
+  await expect(months).toHaveCount(12);
+  for (const month of await months.all()) await expect(month.locator("td").last()).not.toHaveText("$0.00");
 
   await expectAllTeammatesToChooseFrom(browser);
 });
@@ -161,8 +198,20 @@ test("npm run empty with the app running keeps the teammates and leaves every sc
   await expect(page.getByText("No contacts yet. Add the first one.")).toBeVisible();
   await goto(page, "/products");
   await expect(page.getByText("No products yet. Add the first one.")).toBeVisible();
+  await goto(page, "/quotes");
+  await expect(page.getByText("No quotes yet. Add the first one from an open deal.")).toBeVisible();
+  await goto(page, "/invoices");
+  await expect(page.getByText("No invoices yet. Start one from a won deal.")).toBeVisible();
+  await goto(page, "/bills");
+  await expect(page.getByText("No bills yet. Add the first one.")).toBeVisible();
   await goto(page, "/");
   await expect(page.getByText("No follow-ups due.")).toBeVisible();
+  const money = page.getByRole("region", { name: "Money" });
+  await expect(money.getByText("Nothing owed.")).toBeVisible();
+  await expect(money.getByText("No payments in the last 12 months.")).toBeVisible();
+  await expect(money.getByRole("link", { name: /^What we owe/ })).toHaveText("What we owe$0.000 unpaid bills");
+  await expect(money.getByText("No bills due in the next 30 days.")).toBeVisible();
+  await expect(money.getByText("Spending will show here once you've added bills.")).toBeVisible();
   await goto(page, "/pipeline");
   await expect(page.getByText("No deals yet. Add the first one.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add deal to New" })).toBeVisible();
@@ -180,7 +229,9 @@ test("an emptied database stays empty after a restart", async ({ page }) => {
   await expect(page.getByText("No deals yet. Add the first one.")).toBeVisible();
 });
 
-test("from an empty database, the first organization, contact, deal and product can be added", async ({ page }) => {
+test("from an empty database, the first organization, contact, deal, product, bill, quote and invoice can be added", async ({
+  page,
+}) => {
   await openSignedIn(page, "/organizations");
   await page.getByRole("button", { name: "Add organization" }).first().click();
   await page.getByRole("dialog").getByLabel("Name").fill("First Co");
@@ -213,4 +264,40 @@ test("from an empty database, the first organization, contact, deal and product 
   await page.getByRole("dialog").getByLabel("Unit price").fill("49.50");
   await page.getByRole("dialog").getByRole("button", { name: "Save product" }).click();
   await expect(page.getByRole("row", { name: /^First product/ })).toContainText("$49.50");
+
+  await goto(page, "/bills");
+  await page.getByRole("button", { name: "Add bill" }).first().click();
+  await chooseInPicker(page, "Supplier", "First Co");
+  await page.getByRole("dialog").getByLabel("Bill number").fill("FIRST-1");
+  await page.getByRole("dialog").getByLabel("Category").selectOption("Office");
+  await page.getByRole("dialog").getByLabel("Amount").fill("120");
+  await page.getByRole("dialog").getByRole("button", { name: "Save bill" }).click();
+  await expect(page.getByRole("row", { name: /^First Co/ })).toContainText("$120.00");
+
+  await goto(page, "/deals");
+  await page.getByRole("link", { name: "First deal" }).click();
+  await page.getByRole("region", { name: "Quotes" }).getByRole("link", { name: "New quote" }).click();
+  await addFirstProduct(page, "Add product");
+  await page.getByRole("button", { name: "Save quote" }).first().click();
+  await expect(page.getByText("Quote saved.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "QT-0001" })).toBeVisible();
+
+  // An invoice needs a won deal (V4).
+  await page.getByRole("link", { name: "First deal" }).first().click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Stage").selectOption("won");
+  await page.getByRole("dialog").getByRole("button", { name: "Save deal" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("region", { name: "Invoices" }).getByRole("button", { name: "New invoice" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Draft invoice" })).toBeVisible();
+  await addFirstProduct(page, "Add line");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Draft saved.")).toBeVisible();
 });
+
+/** The first product as a line on a quote's or an invoice's draft, from the button that adds one. */
+async function addFirstProduct(page: Page, button: string) {
+  await page.getByRole("button", { name: button }).click();
+  await page.getByPlaceholder("Search products").fill("First product");
+  await page.getByRole("option", { name: /^First product/ }).click();
+}

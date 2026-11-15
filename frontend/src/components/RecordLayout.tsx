@@ -1,26 +1,23 @@
 import { differenceInSeconds, parseISO } from "date-fns";
 import { Pencil, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Link } from "react-router";
 
 import { formatDate } from "../lib/dates";
 import type { Authorship, Person } from "../lib/records";
 import { PageHeader } from "./PageHeader";
 
-/** A record page's second button, in place of Delete, such as Archive. */
+/** A record page's own button after Edit, such as Archive, in place of Delete or before it. */
 export type HeaderAction = { label: string; icon: ReactNode; onClick: () => void; pending?: boolean };
 
-/** A page gives Delete or another button, never both. */
-type SecondButton = { onDelete: () => void; action?: never } | { action: HeaderAction; onDelete?: never };
+/** A page has Edit, then its own button, Delete, or both in that order. */
+type HeaderButtons = { onDelete: () => void; action?: HeaderAction } | { action: HeaderAction; onDelete?: () => void };
 
-type HeaderProps = SecondButton & { title: string; chips?: ReactNode; onEdit: () => void };
+type HeaderProps = HeaderButtons & { title: string; chips?: ReactNode; onEdit: () => void };
 
 export function RecordHeader({ title, chips, onEdit, onDelete, action }: HeaderProps) {
-  const second: HeaderAction = action ?? {
-    label: "Delete",
-    icon: <Trash2 size={15} aria-hidden="true" />,
-    onClick: onDelete!,
-  };
+  const remove = onDelete && { label: "Delete", icon: <Trash2 size={15} aria-hidden="true" />, onClick: onDelete };
+  const buttons: HeaderAction[] = [action, remove].filter((button) => button !== undefined);
   return (
     <PageHeader title={title}>
       {chips}
@@ -29,10 +26,19 @@ export function RecordHeader({ title, chips, onEdit, onDelete, action }: HeaderP
           <Pencil size={15} aria-hidden="true" />
           Edit
         </button>
-        <button type="button" className="btn btn-secondary bg-panel" disabled={second.pending} onClick={second.onClick}>
-          {second.icon}
-          {second.label}
-        </button>
+        {/* Kept in place by position, so a button that changes, such as Mark paid to Mark unpaid, keeps focus. */}
+        {buttons.map((button, place) => (
+          <button
+            key={place}
+            type="button"
+            className="btn btn-secondary bg-panel"
+            disabled={button.pending}
+            onClick={button.onClick}
+          >
+            {button.icon}
+            {button.label}
+          </button>
+        ))}
       </div>
     </PageHeader>
   );
@@ -59,6 +65,23 @@ export function SidePanel({ title, action, children }: { title: string; action?:
   );
 }
 
+/**
+ * A panel another area adds to a record page, such as a deal's quotes, given the record as
+ * the page has it. App.tsx hands the panels to the page, so the page never names that area.
+ */
+export type RecordPanel<R> = { name: string; Panel: ComponentType<{ record: R }> };
+
+/** The panels other areas add, below the page's own in its side column, in the order given. */
+export function AddedPanels<R>({ panels, record }: { panels: RecordPanel<R>[]; record: R }) {
+  return (
+    <>
+      {panels.map(({ name, Panel }) => (
+        <Panel key={name} record={record} />
+      ))}
+    </>
+  );
+}
+
 export function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
@@ -72,7 +95,8 @@ export function LinkedList({
   items,
   empty,
 }: {
-  items: { key: number; to: string; name: string; hint?: ReactNode; end?: ReactNode }[];
+  /** Each name is the link's text, such as a quote's number in JetBrains Mono. */
+  items: { key: number; to: string; name: ReactNode; hint?: ReactNode; end?: ReactNode }[];
   empty: string;
 }) {
   if (items.length === 0) return <p className="py-1 text-muted">{empty}</p>;

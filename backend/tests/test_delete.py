@@ -1,9 +1,14 @@
 from datetime import date
 
-from accountable import db
-from accountable.crm.tables import activities, stage_changes
+import pytest
+from accountable import db, holds, main
+from accountable.crm.tables import activities, contacts, deals, organizations, stage_changes
+from accountable.holds import Hold
+from accountable.invoices.tables import invoices
+from accountable.quotes.tables import quotes
 from conftest import NOW, TODAY
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 
 def count(table, *where) -> int:
@@ -17,7 +22,7 @@ def test_deleting_an_organization_keeps_its_contacts_and_deals(api, make, deal_r
     deals = [make.deal(f"Deal {n}", organization_id=organization) for n in range(3)]
 
     impact = api.get(f"/api/organizations/{organization}/delete-impact").json()
-    assert impact == {"contacts": 4, "deals": 3}
+    assert impact == {"contacts": 4, "deals": 3, "held_by": []}
 
     assert api.delete(f"/api/organizations/{organization}").status_code == 204
 
@@ -64,7 +69,7 @@ def test_deleting_a_deal_removes_its_activities_and_stage_changes(api, make):
     api.post(f"/api/deals/{deal}/move", json={"stage": "qualified"})
 
     impact = api.get(f"/api/deals/{deal}/delete-impact").json()
-    assert impact == {"activities": 2, "stage_changes": 1, "won": False, "value": 10000}
+    assert impact == {"activities": 2, "stage_changes": 1, "won": False, "value": 10000, "held_by": []}
 
     assert api.delete(f"/api/deals/{deal}").status_code == 204
 
@@ -118,3 +123,181 @@ def test_a_won_deal_stays_counted_after_its_organization_and_contact_go(api, mak
     dashboard = api.get("/api/dashboard").json()
     assert dashboard["revenue_this_month"] == 9000
     assert dashboard["deals_won_this_month"] == 1
+
+
+# These stand in for a later area's records, such as a deal's invoices or an organization's
+# bills, so the checks don't rest on any one area: a deal's activities, and an organization's
+# contacts and deals.
+STAND_IN_HOLDS = [
+    Hold(activities.c.deal_id, "activity"),
+    Hold(contacts.c.organization_id, "contact"),
+    Hold(deals.c.organization_id, "deal"),
+]
+
+
+@pytest.fixture
+def held(local_app):
+    local_app.dependency_overrides[holds.app_holds] = lambda: STAND_IN_HOLDS
+
+
+def test_quotes_and_invoices_hold_deals_and_invoices_and_bills_hold_organizations():
+    """Each area's holds join the app's, so this checks that each is there, not that they're the only holds."""
+    every = [hold for area in main.AREAS for hold in area.holds]
+    assert main.app.state.holds == every
+    given = [(hold.held, hold.noun) for hold in every]
+    assert (deals, "quote") in given
+    assert (organizations, "bill") in given
+    invoices_holds = [(hold.link, hold.held) for hold in every if hold.noun == "invoice"]
+    assert invoices_holds == [(invoices.c.deal_id, deals), (invoices.c.organization_id, organizations)]
+
+
+def add_quote(api, deal: int) -> int:
+    reply = api.post("/api/quotes", json={"deal_id": deal})
+    assert reply.status_code == 201, reply.text
+    return reply.json()["id"]
+
+
+def test_a_deal_with_quotes_cant_be_deleted(api, make):
+    deal = make.deal()
+    for _ in range(2):
+        add_quote(api, deal)
+
+    assert api.get(f"/api/deals/{deal}/delete-impact").json()["held_by"] == [{"noun": "quote", "count": 2}]
+    refused = api.delete(f"/api/deals/{deal}")
+    assert (refused.status_code, refused.json()) == (409, {"detail": "This deal has 2 quotes, so it can't be deleted."})
+    assert api.get(f"/api/deals/{deal}").status_code == 200
+    assert count(quotes) == 2
+
+
+def test_an_organization_whose_deals_have_quotes_still_deletes_leaving_the_deals_and_quotes(api, make, deal_row):
+    organization = make.organization()
+    deal = make.deal(organization_id=organization)
+    quote = add_quote(api, deal)
+
+    assert api.get(f"/api/organizations/{organization}/delete-impact").json()["held_by"] == []
+    assert api.delete(f"/api/organizations/{organization}").status_code == 204
+
+    assert deal_row(deal).organization_id is None
+    assert api.get(f"/api/quotes/{quote}").json()["prepared_for"]["organization"] is None
+
+
+def test_a_deal_with_only_a_draft_cant_be_deleted(api, make):
+    deal = make.deal(stage="won")
+    make.invoice(deal)
+    make.invoice(deal)
+
+    assert api.get(f"/api/deals/{deal}/delete-impact").json()["held_by"] == [{"noun": "invoice", "count": 2}]
+    refused = api.delete(f"/api/deals/{deal}")
+    assert (refused.status_code, refused.json()) == (
+        409,
+        {"detail": "This deal has 2 invoices, so it can't be deleted."},
+    )
+    assert count(invoices) == 2
+
+
+def test_an_organization_with_an_issued_invoice_cant_be_deleted(api, make):
+    organization = make.organization()
+    deal = make.deal(stage="won")
+    make.invoice(deal, status="issued", organization_id=organization, number="INV-0001")
+
+    impact = api.get(f"/api/organizations/{organization}/delete-impact").json()
+    assert impact["held_by"] == [{"noun": "invoice", "count": 1}]
+    refused = api.delete(f"/api/organizations/{organization}")
+    assert (refused.status_code, refused.json()) == (
+        409,
+        {"detail": "This organization has 1 invoice, so it can't be deleted."},
+    )
+
+
+def test_a_draft_doesnt_hold_its_deals_organization(api, make):
+    """Only an issued invoice belongs to an organization (V11), so a draft holds its deal alone."""
+    organization = make.organization()
+    deal = make.deal(stage="won", organization_id=organization)
+    make.invoice(deal)
+    assert api.delete(f"/api/organizations/{organization}").status_code == 204
+    assert api.get(f"/api/deals/{deal}").json()["organization_id"] is None
+
+
+def test_the_database_refuses_a_held_delete_that_gets_past_the_route(make):
+    deal = make.deal(stage="won")
+    make.invoice(deal)
+    with pytest.raises(IntegrityError), db.writing() as conn:
+        conn.execute(delete(deals).where(deals.c.id == deal))
+
+
+def test_a_hold_holds_the_table_its_link_points_at():
+    assert [hold.held for hold in STAND_IN_HOLDS] == [deals, organizations, organizations]
+
+
+def test_a_held_deal_says_what_holds_it_and_cant_be_deleted(api, make, held):
+    deal = make.deal()
+    make.activity(deal_id=deal)
+    make.activity(deal_id=deal)
+
+    assert api.get(f"/api/deals/{deal}/delete-impact").json()["held_by"] == [{"noun": "activity", "count": 2}]
+
+    refused = api.delete(f"/api/deals/{deal}")
+    assert (refused.status_code, refused.json()) == (
+        409,
+        {"detail": "This deal has 2 activities, so it can't be deleted."},
+    )
+    assert api.get(f"/api/deals/{deal}").status_code == 200
+    assert count(activities) == 2
+
+
+def test_a_held_organization_names_each_kind_that_holds_it(api, make, held):
+    organization = make.organization()
+    make.contact(organization_id=organization)
+    make.deal("One", organization_id=organization)
+    make.deal("Two", organization_id=organization)
+
+    impact = api.get(f"/api/organizations/{organization}/delete-impact").json()
+    assert impact["held_by"] == [{"noun": "contact", "count": 1}, {"noun": "deal", "count": 2}]
+
+    refused = api.delete(f"/api/organizations/{organization}")
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "This organization has 1 contact and 2 deals, so it can't be deleted."
+    assert api.get(f"/api/organizations/{organization}").status_code == 200
+
+
+def test_only_what_points_at_a_record_holds_it(api, make, held):
+    held_deal = make.deal("Held")
+    free_deal = make.deal("Free")
+    make.activity(deal_id=held_deal)
+    organization = make.organization()
+
+    assert api.get(f"/api/deals/{free_deal}/delete-impact").json()["held_by"] == []
+    assert api.delete(f"/api/deals/{free_deal}").status_code == 204
+    # A deal's hold is on deals only, so an organization with none of its own goes.
+    assert api.delete(f"/api/organizations/{organization}").status_code == 204
+    assert api.get(f"/api/deals/{held_deal}").status_code == 200
+
+
+def test_a_missing_record_is_still_a_404_with_holds_given(api, held):
+    assert api.delete("/api/deals/999").status_code == 404
+    assert api.get("/api/organizations/999/delete-impact").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("items", "said"),
+    [
+        (["2 quotes"], "2 quotes"),
+        (["2 quotes", "1 invoice"], "2 quotes and 1 invoice"),
+        (["2 quotes", "1 invoice", "3 bills"], "2 quotes, 1 invoice and 3 bills"),
+    ],
+)
+def test_what_holds_a_record_is_listed_as_a_sentence_says_it(items, said):
+    assert holds.listed(items) == said
+
+
+@pytest.mark.parametrize(
+    ("count", "noun", "said"),
+    [
+        (1, "invoice", "1 invoice"),
+        (3, "invoice", "3 invoices"),
+        (1, "activity", "1 activity"),
+        (2, "activity", "2 activities"),
+    ],
+)
+def test_each_count_has_its_noun_in_the_plural_where_it_needs_one(count, noun, said):
+    assert holds.plural(count, noun) == said

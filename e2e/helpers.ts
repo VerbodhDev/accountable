@@ -132,6 +132,37 @@ export async function addProduct(request: APIRequestContext, name: string, value
   return product;
 }
 
+type BillFields = {
+  organization_id: number;
+  bill_number?: string;
+  bill_date?: string;
+  due_date?: string;
+  amount_cents?: number;
+  tax_cents?: number;
+  category?: string;
+  notes?: string;
+  paid_on?: string;
+};
+
+/** A software bill for $100.00, dated today and so due in 30 days, unless the values say otherwise. */
+export function addBill(request: APIRequestContext, values: BillFields) {
+  return post<{ id: number; bill_number: string; total_cents: number; paid_on: string | null }>(request, "/bills", {
+    bill_number: "INV-0001",
+    bill_date: isoDay(),
+    amount_cents: 10000,
+    category: "software",
+    ...values,
+  });
+}
+
+/** The opening balance the cash flow counts from, in whole cents, as of a yyyy-MM-dd day, or null for both to remove it (B23). */
+export async function setOpeningBalance(request: APIRequestContext, cents: number | null, on: string | null) {
+  const reply = await request.patch(`${API}/settings`, {
+    data: { opening_balance_cents: cents, opening_balance_on: on },
+  });
+  if (!reply.ok()) throw new Error(`PATCH /settings failed: ${reply.status()} ${await reply.text()}`);
+}
+
 /** An organization, a contact and a deal, for tests that need one of each. */
 export async function addLinkedDeal(request: APIRequestContext, name: string, deal: Partial<DealFields> = {}) {
   const organization = await addOrganization(request, `${name} Ltd`);
@@ -142,6 +173,43 @@ export async function addLinkedDeal(request: APIRequestContext, name: string, de
     ...deal,
   });
   return { organization, contact, deal: added };
+}
+
+/** A deal by its name, such as one from the sample data. */
+export async function findDeal(request: APIRequestContext, name: string) {
+  const reply = await request.get(`${API}/deals`);
+  const deals: { id: number; name: string; stage: string; organization_id: number | null }[] = await reply.json();
+  const found = deals.find((deal) => deal.name === name);
+  if (!found) throw new Error(`No deal is called ${name}`);
+  return found;
+}
+
+/** A product from the price list by its name, such as one from the sample data. */
+export async function findProduct(request: APIRequestContext, name: string) {
+  const reply = await request.get(`${API}/products`);
+  const products: { id: number; name: string; unit_price_cents: number }[] = await reply.json();
+  const found = products.find((product) => product.name === name);
+  if (!found) throw new Error(`No product is called ${name}`);
+  return found;
+}
+
+export type QuoteLineFields = { product_id: number; quantity: number; unit_price_cents: number };
+
+/** A new draft on the deal, with these lines, for tests that need a quote in a given state. */
+export function addQuote(request: APIRequestContext, deal_id: number, lines: QuoteLineFields[]) {
+  return post<{ id: number; number: string }>(request, "/quotes", { deal_id, lines });
+}
+
+export function sendQuote(request: APIRequestContext, id: number) {
+  return post<{ id: number; number: string }>(request, `/quotes/${id}/send`, {});
+}
+
+/** A downloaded PDF's text, page by page with a form feed between, read back with pypdf. */
+export function pdfText(file: string) {
+  return execFileSync("uv", ["run", "--no-sync", "python", "backend/tests/pdf_text.py", file], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
 }
 
 export async function chooseInPicker(page: Page, label: string, name: string) {
@@ -354,4 +422,32 @@ export async function holdOver(page: Page, name: string, spot: Spot) {
   await page.mouse.move(start.x + 8, start.y + 8, { steps: 3 });
   await page.mouse.move(spot.x, spot.y, { steps: 12 });
   await page.mouse.move(spot.x, spot.y + 1);
+}
+
+type DraftLine = { product_id: number; quantity?: number; unit_price_cents?: number; description?: string | null };
+type Invoice = { id: number; number: string | null; total_cents: number; owed_cents: number };
+
+/** A draft on a won deal, with its Bill to filled in from the deal (V4, V5). */
+export function startInvoice(request: APIRequestContext, dealId: number) {
+  return post<Invoice>(request, "/invoices", { deal_id: dealId });
+}
+
+export async function saveDraft(request: APIRequestContext, invoiceId: number, body: { lines: DraftLine[] }) {
+  const reply = await request.patch(`${API}/invoices/${invoiceId}`, { data: body });
+  if (!reply.ok()) throw new Error(`Saving draft ${invoiceId} failed: ${reply.status()} ${await reply.text()}`);
+  return (await reply.json()) as Invoice;
+}
+
+/** Issues a draft, saving these lines first if any are given. It's issued today, so it's never overdue. */
+export function issueInvoice(request: APIRequestContext, invoiceId: number, body: { lines?: DraftLine[] } = {}) {
+  return post<Invoice>(request, `/invoices/${invoiceId}/issue`, body);
+}
+
+/** A won deal with an issued invoice of one line, for tests that need one. */
+export async function addIssuedInvoice(request: APIRequestContext, name: string, unitPriceCents = 100000) {
+  const linked = await addLinkedDeal(request, name, { stage: "won", close_date: isoDay() });
+  const product = await addProduct(request, `${name} product`, { unit_price_cents: unitPriceCents });
+  const draft = await startInvoice(request, linked.deal.id);
+  const invoice = await issueInvoice(request, draft.id, { lines: [{ product_id: product.id }] });
+  return { ...linked, product, invoice };
 }

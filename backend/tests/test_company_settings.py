@@ -1,16 +1,19 @@
 """The company settings through GET and PATCH /api/settings (B1 to B14)."""
 
+import base64
+import io
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 from accountable import db
-from accountable.company import schemas
-from accountable.company.tables import company_settings
+from accountable.company import documents, schemas
+from accountable.company.tables import company_logo, company_settings
 from accountable.users import TEAMMATES
 from conftest import SUPABASE_PERSON
+from PIL import Image
 from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
 
@@ -40,6 +43,8 @@ EVERY_FIELD = {
     "payment_terms_days": 14,
     "quote_prefix": "EST-",
     "invoice_prefix": "BILL-",
+    "invoice_design": "ledger",
+    "accent_color": "#0E6B6B",
 }
 
 # What JSON can send as the rate that isn't text, and what each gets.
@@ -106,13 +111,25 @@ def test_a_database_nobody_has_saved_has_the_defaults_and_no_one_recorded(api):
         "payment_terms_days": 30,
         "quote_prefix": "QT-",
         "invoice_prefix": "INV-",
+        "invoice_design": "classic",
+        "accent_color": "#073B4C",
+        "logo": None,
+        "opening_balance_cents": None,
+        "opening_balance_on": None,
         "updated_by": None,
     }
 
 
 def test_a_save_keeps_every_field_and_says_who_saved_it_and_when(api):
     settings = saved(api.patch(SETTINGS, json=EVERY_FIELD))
-    assert settings == {**EVERY_FIELD, "updated_at": SAVED_AT, "updated_by": {"id": ALEX.id, "name": ALEX.name}}
+    assert settings == {
+        **EVERY_FIELD,
+        "logo": None,
+        "opening_balance_cents": None,
+        "opening_balance_on": None,
+        "updated_at": SAVED_AT,
+        "updated_by": {"id": ALEX.id, "name": ALEX.name},
+    }
     assert saved(api.get(SETTINGS)) == settings
 
 
@@ -231,6 +248,123 @@ def test_a_rate_is_written_out_with_no_trailing_zeros(thousandths, text):
     assert schemas.rate_text(thousandths) == text
 
 
+# The opening balance (B23, B24)
+
+OPENING = {
+    "not an amount": "Enter an amount in dollars and cents, such as 25,000.00",
+    "past the limit": "Keep the opening balance within $1 trillion either way",
+    "no amount": "Enter the opening balance",
+    "no date": "Choose the date of the opening balance",
+    "in the future": "The date can't be in the future",
+}
+A_TRILLION_IN_CENTS = 100_000_000_000_000
+AS_OF = {"opening_balance_cents": 4_000_000, "opening_balance_on": "2025-12-01"}
+
+
+def opening_balance() -> tuple[int | None, date | None]:
+    row = stored()
+    return row["opening_balance_cents"], row["opening_balance_on"]
+
+
+@pytest.mark.parametrize("cents", [4_000_000, -425_000, 0, 1, A_TRILLION_IN_CENTS, -A_TRILLION_IN_CENTS])
+def test_an_opening_balance_and_its_date_are_saved_together_below_zero_too(named, cents):
+    settings = saved(named.patch(SETTINGS, json={"opening_balance_cents": cents, "opening_balance_on": "2025-12-01"}))
+    assert (settings["opening_balance_cents"], settings["opening_balance_on"]) == (cents, "2025-12-01")
+    assert saved(named.get(SETTINGS)) == settings
+    assert opening_balance() == (cents, date(2025, 12, 1))
+
+
+def test_an_amount_without_a_date_is_refused(named):
+    reply = named.patch(SETTINGS, json={"opening_balance_cents": 4_000_000})
+    assert error_fields(reply) == {"opening_balance_on": OPENING["no date"]}
+    assert opening_balance() == (None, None)
+
+
+def test_a_date_without_an_amount_is_refused(named):
+    reply = named.patch(SETTINGS, json={"opening_balance_on": "2025-12-01"})
+    assert error_fields(reply) == {"opening_balance_cents": OPENING["no amount"]}
+    assert opening_balance() == (None, None)
+
+
+@pytest.mark.parametrize(
+    "cleared, problem",
+    [
+        ("opening_balance_on", {"opening_balance_on": OPENING["no date"]}),
+        ("opening_balance_cents", {"opening_balance_cents": OPENING["no amount"]}),
+    ],
+)
+def test_clearing_one_of_a_saved_pair_is_refused(named, cleared, problem):
+    """Checked against the settings as they'd be after the save, so the other one counts (B5)."""
+    saved(named.patch(SETTINGS, json=AS_OF))
+    assert error_fields(named.patch(SETTINGS, json={cleared: None})) == problem
+    assert opening_balance() == (4_000_000, date(2025, 12, 1))
+
+
+def test_clearing_both_removes_the_opening_balance(named):
+    saved(named.patch(SETTINGS, json=AS_OF))
+    settings = saved(named.patch(SETTINGS, json={"opening_balance_cents": None, "opening_balance_on": None}))
+    assert (settings["opening_balance_cents"], settings["opening_balance_on"]) == (None, None)
+    assert opening_balance() == (None, None)
+
+
+@pytest.mark.parametrize("cents", [A_TRILLION_IN_CENTS + 1, -A_TRILLION_IN_CENTS - 1, 10**30, -(10**30)])
+def test_an_amount_past_a_trillion_either_way_gets_its_own_message(named, cents):
+    reply = named.patch(SETTINGS, json={"opening_balance_cents": cents, "opening_balance_on": "2025-12-01"})
+    assert error_fields(reply) == {"opening_balance_cents": OPENING["past the limit"]}
+    assert opening_balance() == (None, None)
+
+
+@pytest.mark.parametrize("cents", [49.5, 4950.0, "4950", True, "abc", [4950]], ids=repr)
+def test_an_amount_that_isnt_whole_cents_is_refused_not_rounded(named, cents):
+    reply = named.patch(SETTINGS, json={"opening_balance_cents": cents, "opening_balance_on": "2025-12-01"})
+    assert error_fields(reply) == {"opening_balance_cents": OPENING["not an amount"]}
+    assert opening_balance() == (None, None)
+
+
+def test_a_fraction_of_a_cent_written_out_in_full_is_refused(named):
+    """The settings' routes read a number with a point exactly, so 4950.0000000000001 can't pass as 4950."""
+    reply = send_raw(named, '{"opening_balance_cents": 4950.0000000000001, "opening_balance_on": "2025-12-01"}')
+    assert error_fields(reply) == {"opening_balance_cents": OPENING["not an amount"]}
+
+
+@pytest.mark.parametrize("on", ["2025-13-01", "2025-02-30", "yesterday", "", True, [2025, 12, 1]], ids=repr)
+def test_a_date_that_isnt_one_is_refused(named, on):
+    reply = named.patch(SETTINGS, json={"opening_balance_cents": 4_000_000, "opening_balance_on": on})
+    assert error_fields(reply) == {"opening_balance_on": OPENING["no date"]}
+
+
+def test_a_date_of_today_is_kept_and_tomorrow_is_refused(named, local_app):
+    """Against the backend's today, so a browser whose clock is ahead can't save tomorrow (B24)."""
+    local_app.dependency_overrides[db.local_today] = lambda: date(2026, 11, 5)
+    saved(named.patch(SETTINGS, json={"opening_balance_cents": 4_000_000, "opening_balance_on": "2026-11-05"}))
+    reply = named.patch(SETTINGS, json={"opening_balance_cents": 4_000_000, "opening_balance_on": "2026-11-06"})
+    assert error_fields(reply) == {"opening_balance_on": OPENING["in the future"]}
+    assert opening_balance() == (4_000_000, date(2026, 11, 5))
+
+
+def test_a_date_that_was_fine_when_it_was_saved_stays_fine(named, local_app):
+    """Such as when the backend's today is a day behind the zone it was saved in."""
+    local_app.dependency_overrides[db.local_today] = lambda: date(2026, 11, 5)
+    saved(named.patch(SETTINGS, json={"opening_balance_cents": 4_000_000, "opening_balance_on": "2026-11-05"}))
+    local_app.dependency_overrides[db.local_today] = lambda: date(2026, 11, 4)
+    every_field = {"opening_balance_cents": -125, "opening_balance_on": "2026-11-05", "tax_rate": "5"}
+    assert saved(named.patch(SETTINGS, json=every_field))["opening_balance_cents"] == -125
+
+
+def test_a_save_of_other_settings_keeps_a_saved_opening_balance(named):
+    saved(named.patch(SETTINGS, json=AS_OF))
+    settings = saved(named.patch(SETTINGS, json={"tax_rate": "5", "payment_terms_days": 14}))
+    assert (settings["opening_balance_cents"], settings["opening_balance_on"]) == (4_000_000, "2025-12-01")
+
+
+def test_entering_an_opening_balance_records_who_did_and_saving_it_again_changes_nothing(named, sign_in_as, local_app):
+    saved(sign_in_as(DANA.id).patch(SETTINGS, json=AS_OF))
+    assert stored()["updated_by"] == DANA.id
+    local_app.dependency_overrides[db.utc_now] = lambda: datetime(2026, 11, 2, 9, 0)
+    saved(sign_in_as(ALEX.id).patch(SETTINGS, json=AS_OF))
+    assert stored()["updated_by"] == DANA.id
+
+
 # Payment terms
 
 
@@ -287,6 +421,35 @@ def test_a_prefix_sent_alone_is_checked_against_the_saved_one(named):
     assert error_fields(named.patch(SETTINGS, json={"quote_prefix": "inv-"})) == {"invoice_prefix": CLASH_MESSAGE}
     assert error_fields(named.patch(SETTINGS, json={"invoice_prefix": "Q"})) == {"invoice_prefix": CLASH_MESSAGE}
     assert (stored()["quote_prefix"], stored()["invoice_prefix"]) == ("QT-", "INV-")
+
+
+def test_a_new_prefix_cant_be_one_a_number_of_the_other_kind_already_starts_with(named, make):
+    """Each prefix as it is now clashes with neither, but QT- took QT-0001 before it changed (B6)."""
+    quote = named.post("/api/quotes", json={"deal_id": make.deal()})
+    assert quote.json()["number"] == "QT-0001", quote.text
+    saved(named.patch(SETTINGS, json={"quote_prefix": "EST-"}))
+
+    for prefix in ("QT-", "qt-", "Q", "QT-00"):
+        reply = named.patch(SETTINGS, json={"invoice_prefix": prefix})
+        assert error_fields(reply) == {"invoice_prefix": schemas.taken_clash_message("quote", "QT-0001")}, prefix
+    saved(named.patch(SETTINGS, json={"invoice_prefix": "QT-1"}))
+    assert stored()["invoice_prefix"] == "QT-1"
+
+
+def test_a_new_quote_prefix_is_checked_against_the_invoices_numbers_too(named, make):
+    make.invoice(make.deal(stage="won"), status="issued", number="INV-0007")
+    saved(named.patch(SETTINGS, json={"invoice_prefix": "BILL-"}))
+    reply = named.patch(SETTINGS, json={"quote_prefix": "inv"})
+    assert error_fields(reply) == {"quote_prefix": schemas.taken_clash_message("invoice", "INV-0007")}
+    assert stored()["quote_prefix"] == "QT-"
+
+
+def test_a_prefix_left_as_it_is_isnt_checked_against_the_numbers_again(named, make):
+    """Numbers taken before the check, under prefixes that now match, don't stop every later save."""
+    make.invoice(make.deal(stage="won"), status="issued", number="QT-0001")
+    saved(named.patch(SETTINGS, json={"payment_terms": 14}))
+    reply = named.patch(SETTINGS, json={"quote_prefix": "EST-"})
+    assert saved(reply)["quote_prefix"] == "EST-"
 
 
 def test_a_missing_name_and_a_clash_are_both_reported(api):
@@ -381,3 +544,148 @@ def test_a_second_row_cant_be_added(database, values):
         conn.execute(insert(company_settings).values(company_name="Another", **values))
     with db.reading() as conn:
         assert len(conn.execute(select(company_settings)).all()) == 1
+
+
+# How invoices look: the design, the accent color and the logo (B18 to B22)
+
+ACCENT_CASES = json.loads((Path(__file__).resolve().parents[2] / "shared" / "accent-cases.json").read_text())
+ACCENT_MESSAGES = {
+    "format": "Enter a color as # and six hex digits, such as #0E6B6B",
+    "light": "Too light to read on white. Choose a darker color",
+}
+
+
+def test_the_accent_colors_messages_are_the_shared_ones_the_page_shows():
+    assert ACCENT_CASES["messages"] == ACCENT_MESSAGES
+    assert (schemas.ACCENT_FORMAT_MESSAGE, schemas.ACCENT_LIGHT_MESSAGE) == (
+        ACCENT_MESSAGES["format"],
+        ACCENT_MESSAGES["light"],
+    )
+
+
+def png(size: tuple[int, int] = (600, 200)) -> bytes:
+    made = io.BytesIO()
+    Image.new("RGB", size, "#0E6B6B").save(made, "PNG")
+    return made.getvalue()
+
+
+def sent(data: bytes) -> str:
+    return base64.b64encode(data).decode()
+
+
+@pytest.mark.parametrize("design", ["classic", "banner", "ledger"])
+def test_each_design_is_saved(named, design):
+    assert saved(named.patch(SETTINGS, json={"invoice_design": design}))["invoice_design"] == design
+
+
+@pytest.mark.parametrize("design", ["Classic", "modern", "", None, 1])
+def test_any_other_design_is_refused(named, design):
+    assert error_fields(named.patch(SETTINGS, json={"invoice_design": design})) == {"invoice_design": "Choose a design"}
+
+
+@pytest.mark.parametrize(("typed", "kept"), ACCENT_CASES["accepted"])
+def test_each_accepted_accent_color_is_kept_in_capitals(named, typed, kept):
+    assert saved(named.patch(SETTINGS, json={"accent_color": typed}))["accent_color"] == kept
+    assert stored()["accent_color"] == kept
+
+
+@pytest.mark.parametrize(("typed", "message"), ACCENT_CASES["refused"])
+def test_each_refused_accent_color_gets_its_message(named, typed, message):
+    reply = named.patch(SETTINGS, json={"accent_color": typed})
+    assert error_fields(reply) == {"accent_color": ACCENT_MESSAGES[message]}
+    assert stored()["accent_color"] == "#073B4C"
+
+
+@pytest.mark.parametrize("color", [None, 7, ["#073B4C"]])
+def test_an_accent_color_that_isnt_text_is_refused(named, color):
+    assert error_fields(named.patch(SETTINGS, json={"accent_color": color})) == {
+        "accent_color": ACCENT_MESSAGES["format"]
+    }
+
+
+def test_the_contrast_is_wcags():
+    assert round(schemas.contrast_with_white("#767676"), 2) == 4.54
+    assert round(schemas.contrast_with_white("#777777"), 2) == 4.48
+    assert schemas.contrast_with_white("#000000") == pytest.approx(21)
+
+
+def test_a_logo_is_saved_and_read_back_with_its_type_and_size_but_never_its_bytes(named):
+    settings = saved(named.patch(SETTINGS, json={"logo": sent(png())}))
+    assert settings["logo"] == {"media_type": "image/png", "width": 600, "height": 200}
+    assert saved(named.get(SETTINGS))["logo"] == settings["logo"]
+    assert sent(png()) not in named.get(SETTINGS).text
+
+
+def test_the_logos_route_sends_its_bytes_with_the_type_found_and_nosniff(named):
+    data = png((30, 10))
+    named.patch(SETTINGS, json={"logo": sent(data)})
+    reply = named.get(f"{SETTINGS}/logo")
+    assert reply.status_code == 200
+    assert reply.content == data
+    assert reply.headers["content-type"] == "image/png"
+    assert reply.headers["x-content-type-options"] == "nosniff"
+
+
+def test_with_no_logo_its_route_is_a_404(api):
+    assert api.get(f"{SETTINGS}/logo").status_code == 404
+
+
+def test_leaving_the_logo_out_keeps_it_and_null_removes_it(named):
+    named.patch(SETTINGS, json={"logo": sent(png())})
+    assert saved(named.patch(SETTINGS, json={"phone": "555-0100"}))["logo"]["width"] == 600
+    assert saved(named.patch(SETTINGS, json={"logo": None}))["logo"] is None
+    assert named.get(f"{SETTINGS}/logo").status_code == 404
+
+
+def test_a_new_logo_replaces_the_old_one(named):
+    named.patch(SETTINGS, json={"logo": sent(png())})
+    assert saved(named.patch(SETTINGS, json={"logo": sent(png((50, 50)))}))["logo"]["width"] == 50
+    with db.reading() as conn:
+        assert len(conn.execute(select(company_logo)).all()) == 1
+
+
+def test_saving_or_removing_the_logo_sets_who_last_changed_the_settings(named, sign_in_as, local_app):
+    local_app.dependency_overrides[db.utc_now] = lambda: datetime(2026, 11, 2, 9, 30)
+    added = saved(sign_in_as(DANA.id).patch(SETTINGS, json={"logo": sent(png())}))
+    assert (added["updated_by"]["id"], added["updated_at"]) == (DANA.id, "2026-11-02T09:30:00Z")
+    local_app.dependency_overrides[db.utc_now] = lambda: datetime(2026, 11, 3, 9, 30)
+    same_again = saved(sign_in_as(ALEX.id).patch(SETTINGS, json={"logo": sent(png())}))
+    assert same_again["updated_by"]["id"] == DANA.id
+    removed = saved(named.patch(SETTINGS, json={"logo": None}))
+    assert (removed["updated_by"]["id"], removed["updated_at"]) == (ALEX.id, "2026-11-03T09:30:00Z")
+    nothing_to_remove = saved(sign_in_as(DANA.id).patch(SETTINGS, json={"logo": None}))
+    assert nothing_to_remove["updated_by"]["id"] == ALEX.id
+
+
+@pytest.mark.parametrize(
+    ("logo", "message"),
+    [
+        ("not base64 at all!", "Choose a PNG or JPEG image"),
+        (sent(b"This is not a picture.\n"), "Choose a PNG or JPEG image"),
+        (sent(b"<svg xmlns='http://www.w3.org/2000/svg'/>"), "Choose a PNG or JPEG image"),
+        (12, "Choose a PNG or JPEG image"),
+        (sent(png((2001, 10))), "Choose an image no more than 2,000 pixels wide or tall"),
+        (sent(b"\x00" * (1024 * 1024 + 1)), "Choose an image of 1 MB or less"),
+    ],
+)
+def test_a_logo_that_isnt_a_small_png_or_jpeg_is_refused_and_nothing_changes(named, logo, message):
+    named.patch(SETTINGS, json={"logo": sent(png())})
+    reply = named.patch(SETTINGS, json={"logo": logo, "phone": "555-0100"})
+    assert error_fields(reply) == {"logo": message}
+    assert saved(named.get(SETTINGS))["logo"]["width"] == 600
+    assert stored()["phone"] is None
+
+
+def test_the_design_and_color_are_in_the_settings_documents_read(named):
+    named.patch(SETTINGS, json={"invoice_design": "banner", "accent_color": "#0e6b6b", "logo": sent(png())})
+    with db.reading() as conn:
+        settings = documents.current_settings(conn)
+        current = documents.current_logo(conn)
+    assert (settings.invoice_design, settings.accent_color) == ("banner", "#0E6B6B")
+    assert current is not None
+    assert (current.image, current.media_type, current.width, current.height) == (png(), "image/png", 600, 200)
+
+
+def test_with_no_logo_documents_read_none(database):
+    with db.reading() as conn:
+        assert documents.current_logo(conn) is None

@@ -1,7 +1,7 @@
-import type { Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { card, column, fillToLimits } from "./helpers";
+import { card, column, fillToLimits, isoDay } from "./helpers";
 
 test.beforeAll(fillToLimits);
 
@@ -15,32 +15,45 @@ function median(readings: number[]) {
   return [...readings].sort((a, b) => a - b)[Math.floor(readings.length / 2)];
 }
 
-test("the dashboard's data arrives in under 200ms", async ({ page, sessionToken }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("revenue-this-month")).toBeVisible();
-  const { readings, statuses } = await page.evaluate(async (token) => {
-    const times: number[] = [];
-    const codes: number[] = [];
-    for (let reading = 0; reading < 5; reading += 1) {
-      const start = performance.now();
-      const reply = await fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } });
-      await reply.json();
-      times.push(performance.now() - start);
-      codes.push(reply.status);
-    }
-    return { readings: times, statuses: codes };
-  }, sessionToken);
-  // A refused read comes back fast too, so only real data counts.
-  expect(statuses).toEqual([200, 200, 200, 200, 200]);
-  console.log(`Dashboard data: ${median(readings).toFixed(1)}ms`);
-  expect(median(readings)).toBeLessThan(200);
-});
+// The dashboard's own figures, and the Money section's, which the bills area reads for itself (E24).
+for (const [name, route] of [
+  ["The dashboard's", "/api/dashboard"],
+  ["The Money section's", "/api/bills/dashboard"],
+]) {
+  test(`${name} data arrives in under 200ms`, async ({ page, sessionToken }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("revenue-this-month")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^What we owe/ })).toBeVisible();
+    const { readings, statuses } = await page.evaluate(
+      async ([token, address]) => {
+        const times: number[] = [];
+        const codes: number[] = [];
+        for (let reading = 0; reading < 5; reading += 1) {
+          const start = performance.now();
+          const reply = await fetch(address, { headers: { Authorization: `Bearer ${token}` } });
+          await reply.json();
+          times.push(performance.now() - start);
+          codes.push(reply.status);
+        }
+        return { readings: times, statuses: codes };
+      },
+      [sessionToken, route],
+    );
+    // A refused read comes back fast too, so only real data counts.
+    expect(statuses).toEqual([200, 200, 200, 200, 200]);
+    console.log(`${name} data: ${median(readings).toFixed(1)}ms`);
+    expect(median(readings)).toBeLessThan(200);
+  });
+}
 
 for (const [name, path] of [
   ["Organizations", "/organizations"],
   ["Contacts", "/contacts"],
   ["Deals", "/deals"],
   ["Products", "/products"],
+  ["Quotes", "/quotes"],
+  ["Invoices", "/invoices"],
+  ["Bills", "/bills"],
 ]) {
   test(`${name} opens in under a second`, async ({ page }) => {
     const readings: number[] = [];
@@ -56,6 +69,60 @@ for (const [name, path] of [
     expect(median(readings)).toBeLessThan(1000);
   });
 }
+
+/** The median of five reads of an API route from the page, with the token, each read to its last byte. */
+async function medianRead(page: Page, token: string, route: string) {
+  const { readings, statuses } = await page.evaluate(
+    async ([path, bearer]) => {
+      const times: number[] = [];
+      const codes: number[] = [];
+      for (let reading = 0; reading < 5; reading += 1) {
+        const start = performance.now();
+        const reply = await fetch(path, { headers: { Authorization: `Bearer ${bearer}` } });
+        await reply.arrayBuffer();
+        times.push(performance.now() - start);
+        codes.push(reply.status);
+      }
+      return { readings: times, statuses: codes };
+    },
+    [route, token],
+  );
+  // A refused read comes back fast too, so only real data counts.
+  expect(statuses).toEqual([200, 200, 200, 200, 200]);
+  return median(readings);
+}
+
+test("the Money section's data arrives in under 200ms", async ({ page, sessionToken }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("revenue-this-month")).toBeVisible();
+  const elapsed = await medianRead(page, sessionToken, "/api/invoices/money");
+  console.log(`Money data: ${elapsed.toFixed(1)}ms`);
+  expect(elapsed).toBeLessThan(200);
+});
+
+// The cash flow's figures and a month's list, this month's, from every payment and bill (Q1, Y22).
+for (const [name, route] of [
+  ["The cash flow's", "/api/cash-flow"],
+  ["A month's list's", `/api/cash-flow/expected?month=${isoDay().slice(0, 7)}`],
+]) {
+  test(`${name} data arrives in under 200ms`, async ({ page, sessionToken }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("revenue-this-month")).toBeVisible();
+    const elapsed = await medianRead(page, sessionToken, route);
+    console.log(`${name} data: ${elapsed.toFixed(1)}ms`);
+    expect(elapsed).toBeLessThan(200);
+  });
+}
+
+test("an invoice's PDF downloads in under a second", async ({ page, request, sessionToken }) => {
+  const invoices: { id: number; number: string | null }[] = await (await request.get("/api/invoices")).json();
+  const issued = invoices.find((invoice) => invoice.number !== null)!;
+  await page.goto("/");
+  await expect(page.getByTestId("revenue-this-month")).toBeVisible();
+  const elapsed = await medianRead(page, sessionToken, `/api/invoices/${issued.id}/pdf`);
+  console.log(`PDF: ${elapsed.toFixed(1)}ms`);
+  expect(elapsed).toBeLessThan(1000);
+});
 
 async function keystrokeTime(page: Page, text: string) {
   return page.evaluate(async (value) => {
@@ -73,6 +140,63 @@ async function keystrokeTime(page: Page, text: string) {
     return performance.now() - start;
   }, text);
 }
+
+/** The limits data's 100-line draft (Q1). */
+async function longestQuote(request: APIRequestContext) {
+  const quotes: { id: number; number: string }[] = await (await request.get("/api/quotes")).json();
+  return quotes.find((quote) => quote.number === "QT-1000")!;
+}
+
+/** From a keystroke in a line's Quantity to the preview's new subtotal on screen. */
+async function previewKeystrokeTime(page: Page, box: string, text: string) {
+  return page.evaluate(
+    async ([id, value]) => {
+      const input = document.getElementById(id) as HTMLInputElement;
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      const preview = document.querySelector('[aria-label="Preview"]')!;
+      const before = preview.textContent;
+      const start = performance.now();
+      setValue.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      while (preview.textContent === before) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (performance.now() - start > 2000) break;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return performance.now() - start;
+    },
+    [box, text],
+  );
+}
+
+test("a 100-line quote's preview updates within 100ms of a keystroke", async ({ page, request }) => {
+  const quote = await longestQuote(request);
+  await page.goto(`/quotes/${quote.id}`);
+  await expect(page.locator("#quote-line-99-quantity")).toBeVisible();
+  const readings: number[] = [];
+  for (const text of ["7", "71", "712", "71", "7"])
+    readings.push(await previewKeystrokeTime(page, "quote-line-50-quantity", text));
+  console.log(`Preview keystroke: ${median(readings).toFixed(1)}ms`);
+  expect(median(readings)).toBeLessThan(100);
+});
+
+test("a 100-line quote's PDF downloads in under a second", async ({ page, request }) => {
+  const quote = await longestQuote(request);
+  await page.goto(`/quotes/${quote.id}`);
+  await expect(page.locator("#quote-line-99-quantity")).toBeVisible();
+  const readings: number[] = [];
+  for (let reading = 0; reading < 3; reading += 1) {
+    const start = Date.now();
+    const [file] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Download PDF" }).click(),
+    ]);
+    await file.path();
+    readings.push(Date.now() - start);
+  }
+  console.log(`100-line PDF: ${median(readings)}ms`);
+  expect(median(readings)).toBeLessThan(1000);
+});
 
 test("a search keystroke updates within 100ms", async ({ page }) => {
   await page.goto("/contacts");

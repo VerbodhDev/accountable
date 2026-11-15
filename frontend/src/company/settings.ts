@@ -1,9 +1,22 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
-import { api } from "../lib/api";
+import { api, fetchFile } from "../lib/api";
+import { base64Of } from "../lib/files";
+import { MAX_CENTS, parseSignedPrice, priceText } from "../lib/money";
 import { useWrite, type Person } from "../lib/records";
 import { EMAIL_MESSAGE, isEmail } from "../lib/validate";
+import { accentProblem, keptAccent } from "./accent";
+
+export type InvoiceDesign = "classic" | "banner" | "ledger";
+export const DESIGNS: { key: InvoiceDesign; name: string }[] = [
+  { key: "classic", name: "Classic" },
+  { key: "banner", name: "Banner" },
+  { key: "ledger", name: "Ledger" },
+];
+
+/** The logo's checked type and size. Its bytes come from GET /settings/logo (B22). */
+export type SavedLogo = { media_type: string; width: number; height: number };
 
 /** The company settings (B1), as GET and PATCH /settings reply. The rate is text, such as "8.875" (B7). */
 export type CompanySettings = {
@@ -16,17 +29,41 @@ export type CompanySettings = {
   payment_terms_days: number;
   quote_prefix: string;
   invoice_prefix: string;
+  invoice_design: InvoiceDesign;
+  accent_color: string;
+  logo: SavedLogo | null;
+  /** The cash at the start of opening_balance_on, in whole cents and below zero if overdrawn. Both null with none (B23). */
+  opening_balance_cents: number | null;
+  opening_balance_on: string | null;
   updated_at: string;
   /** Nobody, until someone saves them (B9, B13). */
   updated_by: Person | null;
 };
 
-export type SettingsRequest = Omit<CompanySettings, "updated_at" | "updated_by">;
+/** The logo goes as base64 text, or null to remove it, and is left out to keep it. */
+export type SettingsRequest = Omit<CompanySettings, "updated_at" | "updated_by" | "logo"> & { logo?: string | null };
 
 const SETTINGS_KEY = ["settings"];
 
 export function useCompanySettings() {
   return useQuery({ queryKey: SETTINGS_KEY, queryFn: () => api<CompanySettings>("/settings") });
+}
+
+/**
+ * The saved logo as an address an image can show, read with the token. It's a data address,
+ * so there's nothing to let go of afterwards. Read again whenever the settings change.
+ */
+export function useSavedLogo(settings: CompanySettings | undefined) {
+  const query = useQuery({
+    queryKey: [...SETTINGS_KEY, "logo", settings?.updated_at],
+    queryFn: async () => {
+      const file = await fetchFile("/settings/logo");
+      return `data:${file.type};base64,${await base64Of(file)}`;
+    },
+    enabled: Boolean(settings?.logo),
+    staleTime: Infinity,
+  });
+  return settings?.logo ? (query.data ?? null) : null;
 }
 
 /** Saves the whole form. The reply shows at once, before everything is read again. */
@@ -49,6 +86,11 @@ export const QUOTE_PREFIX_BLANK_MESSAGE = "Enter a prefix, such as QT-";
 export const INVOICE_PREFIX_BLANK_MESSAGE = "Enter a prefix, such as INV-";
 export const PREFIX_CHARACTERS_MESSAGE = "Use up to 10 letters, digits and hyphens";
 export const CLASH_MESSAGE = "Clashes with the quote prefix. Neither can start with the other, ignoring capitals";
+export const OPENING_AMOUNT_MESSAGE = "Enter an amount in dollars and cents, such as 25,000.00";
+export const OPENING_LIMIT_MESSAGE = "Keep the opening balance within $1 trillion either way";
+export const OPENING_AMOUNT_MISSING_MESSAGE = "Enter the opening balance";
+export const OPENING_DATE_MESSAGE = "Choose the date of the opening balance";
+export const OPENING_DATE_FUTURE_MESSAGE = "The date can't be in the future";
 
 // Digits with an optional point, and at least one digit: 8.875, 8, .5 or 5.
 const RATE_DIGITS = /^(?=\.?\d)(\d*)(?:\.(\d*))?$/;
@@ -83,11 +125,42 @@ export function prefixProblem(text: string, blankMessage: string): string | unde
   return PREFIX.test(prefix) ? undefined : PREFIX_CHARACTERS_MESSAGE;
 }
 
+function openingAmountProblem(typed: string): string | undefined {
+  // Read with no limit first, so an amount past it gets its own message.
+  const cents = parseSignedPrice(typed, Infinity);
+  if (cents === null) return OPENING_AMOUNT_MESSAGE;
+  return Math.abs(cents) > MAX_CENTS ? OPENING_LIMIT_MESSAGE : undefined;
+}
+
+/**
+ * The amount and its date go together, both blank for no opening balance, and a date changed to
+ * one after today, the page's own as it's typed, is refused, while the saved one stays fine, as
+ * the backend keeps it (B23, B24). Dates are yyyy-MM-dd, so they compare as text.
+ */
+export function openingBalanceProblems(amount: string, on: string, today: string, savedOn: string | null): Problems {
+  const typed = amount.trim();
+  if (typed === "" && on === "") return {};
+  return {
+    opening_balance_cents: typed === "" ? OPENING_AMOUNT_MISSING_MESSAGE : openingAmountProblem(typed),
+    opening_balance_on:
+      on === "" ? OPENING_DATE_MESSAGE : on !== savedOn && on > today ? OPENING_DATE_FUTURE_MESSAGE : undefined,
+  };
+}
+
 /** Whether a quote's number and an invoice's could ever be the same (B6). */
 export function prefixesClash(quote: string, invoice: string): boolean {
   const [q, i] = [quote.trim().toLowerCase(), invoice.trim().toLowerCase()];
   return q.startsWith(i) || i.startsWith(q);
 }
+
+/**
+ * The logo as the form has it: kept as saved, a new file chosen, or removed. Only a new
+ * one or a removal is sent (B18, B21). A new one's size is null if the browser can't read it.
+ */
+export type LogoChoice =
+  | { kind: "kept" }
+  | { kind: "removed" }
+  | { kind: "new"; name: string; base64: string; url: string; size: { width: number; height: number } | null };
 
 /** The form's boxes, all text as typed, so nothing is rounded or reformatted while it's edited. */
 export type SettingsValues = {
@@ -100,12 +173,18 @@ export type SettingsValues = {
   payment_terms_days: string;
   quote_prefix: string;
   invoice_prefix: string;
+  invoice_design: InvoiceDesign;
+  accent_color: string;
+  logo: LogoChoice;
+  /** Named as the API's fields are, so its messages land beside them, and typed text until it's sent. */
+  opening_balance_cents: string;
+  opening_balance_on: string;
 };
 
 type Problems = Partial<Record<keyof SettingsValues, string>>;
 
-/** Every field's message at once, the clash included, as the backend would give them (B4 to B6). */
-export function settingsProblems(values: SettingsValues): Problems {
+/** Every field's message at once, the clash included, as the backend would give them (B4 to B6, B24). */
+export function settingsProblems(values: SettingsValues, today: string, savedOn: string | null): Problems {
   const email = values.email.trim();
   const problems: Problems = {
     company_name: values.company_name.trim() === "" ? COMPANY_NAME_MESSAGE : undefined,
@@ -114,29 +193,39 @@ export function settingsProblems(values: SettingsValues): Problems {
     payment_terms_days: paymentTermsProblem(values.payment_terms_days),
     quote_prefix: prefixProblem(values.quote_prefix, QUOTE_PREFIX_BLANK_MESSAGE),
     invoice_prefix: prefixProblem(values.invoice_prefix, INVOICE_PREFIX_BLANK_MESSAGE),
+    accent_color: accentProblem(values.accent_color),
+    ...openingBalanceProblems(values.opening_balance_cents, values.opening_balance_on, today, savedOn),
   };
   const bothFine = !problems.quote_prefix && !problems.invoice_prefix;
   if (bothFine && prefixesClash(values.quote_prefix, values.invoice_prefix)) problems.invoice_prefix = CLASH_MESSAGE;
   return problems;
 }
 
-export const settingsSchema = z
-  .object({
-    company_name: z.string(),
-    address: z.string(),
-    email: z.string(),
-    phone: z.string(),
-    tax_label: z.string(),
-    tax_rate: z.string(),
-    payment_terms_days: z.string(),
-    quote_prefix: z.string(),
-    invoice_prefix: z.string(),
-  })
-  .superRefine((values, context) => {
-    for (const [field, message] of Object.entries(settingsProblems(values))) {
-      if (message) context.addIssue({ code: "custom", path: [field], message });
-    }
-  });
+/** The form's checks, with today and the saved date for the opening balance's date. */
+export function settingsSchema(today: string, savedOn: string | null) {
+  return z
+    .object({
+      company_name: z.string(),
+      address: z.string(),
+      email: z.string(),
+      phone: z.string(),
+      tax_label: z.string(),
+      tax_rate: z.string(),
+      payment_terms_days: z.string(),
+      quote_prefix: z.string(),
+      invoice_prefix: z.string(),
+      invoice_design: z.enum(["classic", "banner", "ledger"]),
+      accent_color: z.string(),
+      logo: z.custom<LogoChoice>(),
+      opening_balance_cents: z.string(),
+      opening_balance_on: z.string(),
+    })
+    .superRefine((values, context) => {
+      for (const [field, message] of Object.entries(settingsProblems(values, today, savedOn))) {
+        if (message) context.addIssue({ code: "custom", path: [field], message });
+      }
+    });
+}
 
 export function toForm(settings: CompanySettings): SettingsValues {
   return {
@@ -149,6 +238,11 @@ export function toForm(settings: CompanySettings): SettingsValues {
     payment_terms_days: String(settings.payment_terms_days),
     quote_prefix: settings.quote_prefix,
     invoice_prefix: settings.invoice_prefix,
+    invoice_design: settings.invoice_design,
+    accent_color: settings.accent_color,
+    logo: { kind: "kept" },
+    opening_balance_cents: settings.opening_balance_cents === null ? "" : priceText(settings.opening_balance_cents),
+    opening_balance_on: settings.opening_balance_on ?? "",
   };
 }
 
@@ -156,7 +250,11 @@ function blankToNull(text: string): string | null {
   return text.trim() || null;
 }
 
-/** The rate goes as the typed text, so it reaches the backend exactly as typed (B7). */
+/**
+ * The rate goes as the typed text, so it reaches the backend exactly as typed (B7). The opening
+ * balance goes as whole cents, or null with its date when both are blank, which removes it (B23).
+ * The checks have already refused one without the other.
+ */
 export function toRequest(values: SettingsValues): SettingsRequest {
   return {
     company_name: values.company_name.trim(),
@@ -168,5 +266,17 @@ export function toRequest(values: SettingsValues): SettingsRequest {
     payment_terms_days: Number(values.payment_terms_days.trim()),
     quote_prefix: values.quote_prefix.trim(),
     invoice_prefix: values.invoice_prefix.trim(),
+    invoice_design: values.invoice_design,
+    accent_color: keptAccent(values.accent_color),
+    ...logoRequest(values.logo),
+    opening_balance_cents: parseSignedPrice(values.opening_balance_cents),
+    opening_balance_on: values.opening_balance_on || null,
   };
+}
+
+/** Only a change to the logo is sent, so a save of the other settings never sends its bytes again. */
+function logoRequest(logo: LogoChoice): Pick<SettingsRequest, "logo"> {
+  if (logo.kind === "new") return { logo: logo.base64 };
+  if (logo.kind === "removed") return { logo: null };
+  return {};
 }

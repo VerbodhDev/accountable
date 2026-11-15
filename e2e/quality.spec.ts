@@ -1,11 +1,38 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { SIGNED_IN, addActivity, addLinkedDeal, card, column, dropAtEnd, isoDay, resetToSampleData } from "./helpers";
+import {
+  SIGNED_IN,
+  addActivity,
+  addBill,
+  addLinkedDeal,
+  addOrganization,
+  addProduct,
+  addQuote,
+  card,
+  column,
+  dropAtEnd,
+  findProduct,
+  isoDay,
+  resetToSampleData,
+  saveDraft,
+  sendQuote,
+  startInvoice,
+} from "./helpers";
 
 test.beforeAll(resetToSampleData);
 
-const SECTIONS = ["/", "/organizations", "/contacts", "/deals", "/pipeline", "/products"];
+const SECTIONS = [
+  "/",
+  "/organizations",
+  "/contacts",
+  "/deals",
+  "/pipeline",
+  "/products",
+  "/quotes",
+  "/invoices",
+  "/bills",
+];
 const SIZES = [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
@@ -13,12 +40,32 @@ const SIZES = [
 
 async function recordPaths(request: APIRequestContext) {
   const get = async (route: string) => (await (await request.get(`/api${route}`)).json())[0].id;
+  const quotes: { id: number; status: string }[] = await (await request.get("/api/quotes")).json();
   return [
     `/organizations/${await get("/organizations")}`,
     `/contacts/${await get("/contacts")}`,
     `/deals/${await get("/deals")}`,
     `/products/${await get("/products")}`,
+    `/quotes/${quotes[quotes.length - 1].id}`,
+    `/quotes/${quotes.find((quote) => quote.status === "draft")!.id}`,
+    ...(await invoicePaths(request)),
+    `/bills/${await get("/bills")}`,
   ];
+}
+
+/** A draft on a deal of its own, with two lines from the sample price list. */
+async function addDraft(request: APIRequestContext, name: string) {
+  const { deal } = await addLinkedDeal(request, name, { stage: "proposal" });
+  const product = await findProduct(request, "Standard license, per user per year");
+  const line = { product_id: product.id, quantity: 2, unit_price_cents: product.unit_price_cents };
+  return addQuote(request, deal.id, [line, line]);
+}
+
+/** A draft's page and an issued invoice's, from the sample invoices. */
+async function invoicePaths(request: APIRequestContext) {
+  const invoices: { id: number; shows_as: string }[] = await (await request.get("/api/invoices")).json();
+  const first = (shows: string) => invoices.find((invoice) => invoice.shows_as === shows)!.id;
+  return [`/invoices/${first("draft")}`, `/invoices/${first("part_paid")}`];
 }
 
 function sidewaysOverflow(page: Page) {
@@ -44,13 +91,34 @@ for (const size of SIZES) {
   });
 }
 
+test("the top bar's sections show their icons from 1536px wide, and only their labels below", async ({ page }) => {
+  await page.setViewportSize({ width: 1536, height: 900 });
+  await page.goto("/");
+  const links = page.getByRole("navigation", { name: "Sections" }).getByRole("link");
+  await expect(links).toHaveCount(9);
+  for (const link of await links.all()) await expect(link.locator("svg")).toBeVisible();
+
+  for (const width of [1535, 1440, 1280]) {
+    await page.setViewportSize({ width, height: 720 });
+    for (const link of await links.all()) await expect(link.locator("svg"), `${width}px`).toBeHidden();
+  }
+});
+
 test("a walk through every screen and main action logs no console errors", async ({ page, request }) => {
   const { deal, contact, organization } = await addLinkedDeal(request, "Walked");
+  // From a supplier of its own, because a bill holds its organization, whose delete would then be refused.
+  const supplier = await addOrganization(request, "Walked Supplies");
+  const bill = await addBill(request, { organization_id: supplier.id, bill_number: "WALK-1" });
   for (const path of SECTIONS) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
   }
-  for (const path of [`/organizations/${organization.id}`, `/contacts/${contact.id}`, `/deals/${deal.id}`]) {
+  for (const path of [
+    `/organizations/${organization.id}`,
+    `/contacts/${contact.id}`,
+    `/deals/${deal.id}`,
+    `/bills/${bill.id}`,
+  ]) {
     await page.goto(path);
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -66,11 +134,61 @@ test("a walk through every screen and main action logs no console errors", async
   await page.getByRole("dialog").getByRole("button", { name: "Save activity" }).click();
   await expect(page.getByTestId("timeline-entry").first()).toContainText("Walked through it");
 
+  await page.goto(`/bills/${bill.id}`);
+  await page.getByRole("button", { name: "Mark paid" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Mark paid" }).click();
+  await expect(page.getByRole("button", { name: "Mark unpaid" })).toBeVisible();
+
   await page.goto("/pipeline");
   await expect(card(page, "Walked")).toBeVisible();
   await dropAtEnd(page, "Walked", "lost");
   await expect(column(page, "lost").locator('[data-deal="Walked"]')).toBeVisible();
   await page.waitForLoadState("networkidle");
+
+  // A quote: a draft saved, each of its dialogs opened, and a sent one's Accept.
+  const draft = await addDraft(request, "Quoted");
+  await page.goto(`/quotes/${draft.id}`);
+  await page.locator("#quote-line-0-quantity").fill("3");
+  const quoteSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === `/api/quotes/${draft.id}`,
+  );
+  await page.getByRole("button", { name: "Save quote" }).click();
+  expect((await quoteSaved).ok()).toBe(true);
+  await expect(page.getByText("Quote saved.")).toBeVisible();
+  for (const [button, asks] of [
+    ["Mark as sent", "as sent?"],
+    ["Decline", "Decline "],
+  ]) {
+    await page.getByRole("button", { name: button, exact: true }).click();
+    await expect(page.getByRole("alertdialog")).toContainText(asks);
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  }
+  await sendQuote(request, draft.id);
+  await page.goto(`/quotes/${draft.id}`);
+  await page.getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("will move to Won");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await page.goto("/quotes");
+  await page.getByRole("button", { name: "New quote" }).click();
+  await expect(page.getByRole("dialog", { name: "New quote" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // An invoice: a draft's Add line and Issue invoice, and an issued one's Record payment.
+  const [invoiceDraft, issued] = await invoicePaths(request);
+  await page.goto(invoiceDraft);
+  await page.getByRole("button", { name: "Add line" }).click();
+  await expect(page.getByPlaceholder("Search products")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Issue invoice" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Once it's issued, it can't be changed.");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await page.goto(issued);
+  await page.getByRole("button", { name: "Record payment" }).click();
+  await expect(page.getByRole("dialog", { name: "Record payment" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // A save with nothing changed, which leaves the settings as they were.
   await openSettings(page);
@@ -111,11 +229,13 @@ async function tabThrough(page: Page, presses: number) {
 test("every control can be reached by Tab and shows a focus ring", async ({ page }) => {
   await page.goto("/organizations");
   await expect(page.locator("tbody tr").first()).toBeVisible();
-  const table = await tabThrough(page, 21);
+  // Past the nine sections, the search box, the menu, Add, the table's search and its headings.
+  const table = await tabThrough(page, 24);
   for (const name of [
     "A Dashboard",
     "A Deals",
     "A Products",
+    "A Bills",
     "INPUT Search organizations, contacts, deals and products",
     `BUTTON Menu for ${SIGNED_IN.name}`,
     "BUTTON Add organization",
@@ -129,23 +249,84 @@ test("every control can be reached by Tab and shows a focus ring", async ({ page
 
   await page.goto("/");
   await expect(page.getByTestId("follow-up").first()).toBeVisible();
-  const dashboard = await tabThrough(page, 19);
+  const dashboard = await tabThrough(page, 22);
   expect([...dashboard].some((name) => name.startsWith("INPUT Mark "))).toBe(true);
   expect([...dashboard]).toContain("A Open the pipeline");
 
   await page.goto("/pipeline");
   await expect(page.locator("[data-deal]").first()).toBeVisible();
-  const board = await tabThrough(page, 13);
+  const board = await tabThrough(page, 16);
   expect([...board].some((name) => name.startsWith("BUTTON Add deal to "))).toBe(true);
   expect([...board].some((name) => name.startsWith("A $"))).toBe(true);
 
   await page.goto("/products");
   await expect(page.locator("tbody tr").first()).toBeVisible();
-  const products = await tabThrough(page, 18);
+  const products = await tabThrough(page, 21);
   for (const name of ["BUTTON Add product", "INPUT Search products", "INPUT Show archived (2)", "BUTTON Unit price"]) {
     expect([...products], name).toContain(name);
   }
   expect([...products].some((name) => name.startsWith("BUTTON Archive "))).toBe(true);
+
+  await page.goto("/bills");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  const bills = await tabThrough(page, 28);
+  for (const name of ["BUTTON Add bill", "INPUT Search bills", "BUTTON Total"]) {
+    expect([...bills], name).toContain(name);
+  }
+  for (const filter of ["All", "Unpaid", "Overdue", "Paid"]) {
+    expect(
+      [...bills].some((name) => name.startsWith(`BUTTON ${filter} (`)),
+      filter,
+    ).toBe(true);
+  }
+  expect([...bills].some((name) => name.startsWith("BUTTON Mark paid bill "))).toBe(true);
+});
+
+/** Whether a chip's color differs from the surface behind it, the nearest one that has a color, so its shape shows. */
+function standsOut(chip: Locator) {
+  return chip.evaluate((element) => {
+    const colorOf = (node: Element) => getComputedStyle(node).backgroundColor;
+    let surface = element.parentElement;
+    while (surface && colorOf(surface) === "rgba(0, 0, 0, 0)") surface = surface.parentElement;
+    return colorOf(element) !== (surface ? colorOf(surface) : "none");
+  });
+}
+
+test("a Draft chip keeps its shape beside a page's title and on a hovered row", async ({ page, request }) => {
+  const quotes: { id: number; status: string }[] = await (await request.get("/api/quotes")).json();
+  const [draftInvoice] = await invoicePaths(request);
+  for (const path of [`/quotes/${quotes.find((quote) => quote.status === "draft")!.id}`, draftInvoice]) {
+    await page.goto(path);
+    const chip = page.getByRole("main").getByText("Draft", { exact: true }).first();
+    await expect.poll(() => standsOut(chip), path).toBe(true);
+  }
+  for (const path of ["/quotes?status=draft", "/invoices?status=draft"]) {
+    await page.goto(path);
+    const row = page.getByRole("row").nth(1);
+    await row.hover();
+    const headings = await page.getByRole("columnheader").allTextContents();
+    const status = headings.findIndex((heading) => heading.startsWith("Status"));
+    const chip = row.getByRole("cell").nth(status).getByText("Draft", { exact: true });
+    await expect.poll(() => standsOut(chip), path).toBe(true);
+  }
+});
+
+test("a draft quote's form can be tabbed through, with a focus ring on each control", async ({ page, request }) => {
+  const draft = await addDraft(request, "Tabbed");
+  await page.goto(`/quotes/${draft.id}`);
+  await expect(page.getByLabel("Valid until")).toBeVisible();
+  await page.getByRole("button", { name: "Download PDF" }).focus();
+  const reached = await tabThrough(page, 18);
+  for (const name of [
+    "INPUT Valid until",
+    "BUTTON Remove Standard license, per user per year",
+    "TEXTAREA Description",
+    "INPUT Quantity",
+    "INPUT Unit price",
+    "BUTTON Add product",
+  ]) {
+    expect([...reached], name).toContain(name);
+  }
 });
 
 /** How many lines each element's text takes up. */
@@ -174,7 +355,7 @@ test("the top bar stays on one line at 1280 by 720, even with the widest date", 
 
   expect((await bar.boundingBox())!.height).toBe(56);
   expect(await linesOf(bar.getByRole("navigation", { name: "Sections" }).getByRole("link"))).toEqual([
-    1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1,
   ]);
   const date = bar.getByText("Nov 30, 2026");
   expect(await linesOf(date)).toEqual([1]);
@@ -198,18 +379,49 @@ test("the Company settings form can be tabbed through in order, with a focus rin
     .getByRole("banner")
     .getByRole("button", { name: `Menu for ${SIGNED_IN.name}` })
     .focus();
-  const reached = [...(await tabThrough(page, 10))];
+  // Chrome steps through a date box's month, day and year, then its calendar button, so As of takes four presses.
+  const reached = [...(await tabThrough(page, 15))];
   expect(reached).toEqual([
+    "BUTTON Save settings",
     "INPUT Company name",
     "TEXTAREA Address",
     "INPUT Email",
     "INPUT Phone",
+    "INPUT Opening balance",
+    "INPUT As of",
     "INPUT Tax label",
     "INPUT Tax rate",
     "INPUT Payment terms",
     "INPUT Quote prefix",
     "INPUT Invoice prefix",
-    "BUTTON Save settings",
+  ]);
+});
+
+test("a draft's form can be tabbed through in order, with a focus ring on each box and button", async ({
+  page,
+  request,
+}) => {
+  const { deal } = await addLinkedDeal(request, "Tabbed", { stage: "won", close_date: isoDay() });
+  const product = await addProduct(request, "Tabbed license");
+  const draft = await startInvoice(request, deal.id);
+  await saveDraft(request, draft.id, { lines: [{ product_id: product.id }] });
+  await page.goto(`/invoices/${draft.id}`);
+  await expect(page.getByTestId("draft-line")).toHaveCount(1);
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: `Menu for ${SIGNED_IN.name}` })
+    .focus();
+  const reached = [...(await tabThrough(page, 9))];
+  expect(reached).toEqual([
+    "BUTTON Delete draft",
+    "BUTTON Save draft",
+    "BUTTON Issue invoice",
+    "TEXTAREA Bill to",
+    "BUTTON Remove Tabbed license",
+    "TEXTAREA Description",
+    "INPUT Quantity",
+    "INPUT Unit price",
+    "BUTTON Add line",
   ]);
 });
 

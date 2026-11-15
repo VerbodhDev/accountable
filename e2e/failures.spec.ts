@@ -3,15 +3,18 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import {
   addActivity,
+  addBill,
   addDeal,
   addLinkedDeal,
   addOrganization,
   addProduct,
+  addQuote,
   card,
   column,
   dropAtEnd,
   emptyDatabase,
   isoDay,
+  startInvoice,
 } from "./helpers";
 
 // What the app does when things go wrong, which is where the bugs the review found
@@ -43,9 +46,17 @@ type Screen = {
   name: string;
   address: (ids: Ids) => string;
   read: (ids: Ids) => string;
-  shown: (page: Page) => Locator;
+  shown: (page: Page, ids: Ids) => Locator;
 };
-type Ids = { deal: number; contact: number; organization: number; product: number };
+type Ids = {
+  deal: number;
+  contact: number;
+  organization: number;
+  product: number;
+  bill: number;
+  quote: { id: number; number: string };
+  invoice: number;
+};
 
 const heading = (page: Page, name: string) => page.getByRole("heading", { level: 1, name });
 
@@ -123,13 +134,100 @@ const SCREENS: Screen[] = [
     read: ({ product }) => `/api/products/${product}`,
     shown: (page) => heading(page, "Solid kit"),
   },
+  {
+    name: "Quotes",
+    address: () => "/quotes",
+    read: () => "/api/quotes",
+    shown: (page) => page.locator("tbody tr").first(),
+  },
+  {
+    name: "a quote's page",
+    address: ({ quote }) => `/quotes/${quote.id}`,
+    read: ({ quote }) => `/api/quotes/${quote.id}`,
+    shown: (page, { quote }) => heading(page, quote.number),
+  },
+  {
+    name: "Invoices",
+    address: () => "/invoices",
+    read: () => "/api/invoices",
+    shown: (page) => page.locator("tbody tr").first(),
+  },
+  {
+    name: "an invoice's page",
+    address: ({ invoice }) => `/invoices/${invoice}`,
+    read: ({ invoice }) => `/api/invoices/${invoice}`,
+    shown: (page) => heading(page, "Draft invoice"),
+  },
+  {
+    name: "invoices' side of the Money section",
+    address: () => "/",
+    read: () => "/api/invoices/money",
+    shown: (page) => page.getByRole("region", { name: "Owed to us" }),
+  },
+  {
+    name: "Bills",
+    address: () => "/bills",
+    read: () => "/api/bills",
+    shown: (page) => page.locator("tbody tr").first(),
+  },
+  {
+    name: "a bill's page",
+    address: ({ bill }) => `/bills/${bill}`,
+    read: ({ bill }) => `/api/bills/${bill}`,
+    shown: (page) => heading(page, "Bill SOLID-1"),
+  },
+  {
+    name: "bills' side of the Money section",
+    address: () => "/",
+    read: () => "/api/bills/dashboard",
+    shown: (page) => page.getByRole("link", { name: /^What we owe/ }),
+  },
 ];
+
+test("the cash flow says so when it can't load, leaves the rest of the Money section showing, and Try again works", async ({
+  page,
+  expectConsoleError,
+}) => {
+  expectConsoleError(/status of 500/);
+  const broken = await breakApi(page, "/api/cash-flow");
+
+  await page.goto("/");
+  const cashFlow = page.getByRole("region", { name: "Cash flow" });
+  await expect(cashFlow.getByText("Couldn't load this.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^What we owe/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Owed to us" })).toBeVisible();
+  await expect(page.getByText("Couldn't load this.")).toHaveCount(1);
+
+  broken.on = false;
+  await cashFlow.getByRole("button", { name: "Try again" }).click();
+  await expect(cashFlow.getByRole("list", { name: "Legend" })).toBeVisible();
+  await expect(cashFlow.getByText("Couldn't load this.")).toHaveCount(0);
+});
 
 async function solidRecords(request: APIRequestContext): Promise<Ids> {
   const { deal, contact, organization } = await addLinkedDeal(request, "Solid");
   await addActivity(request, { deal_id: deal.id, description: "Something happened" });
   const product = await addProduct(request, "Solid kit");
-  return { deal: deal.id, contact: contact.id, organization: organization.id, product: product.id };
+  // From a supplier of its own, so the organization above stays free to delete.
+  const supplier = await addOrganization(request, "Solid Supplies");
+  const bill = await addBill(request, { organization_id: supplier.id, bill_number: "SOLID-1" });
+  // On deals of their own, which they hold, so the deal and organization above stay free to delete.
+  const offer = await addLinkedDeal(request, "Solid offer", { stage: "proposal" });
+  const quote = await addQuote(request, offer.deal.id, [
+    { product_id: product.id, quantity: 1, unit_price_cents: 10000 },
+  ]);
+  // Worth nothing, so the dashboard's revenue this month stays as the tests expect it.
+  const win = await addLinkedDeal(request, "Solid win", { stage: "won", close_date: isoDay(), value: 0 });
+  const invoice = await startInvoice(request, win.deal.id);
+  return {
+    deal: deal.id,
+    contact: contact.id,
+    organization: organization.id,
+    product: product.id,
+    bill: bill.id,
+    quote,
+    invoice: invoice.id,
+  };
 }
 
 for (const screen of SCREENS) {
@@ -148,7 +246,7 @@ for (const screen of SCREENS) {
 
     broken.on = false;
     await page.getByRole("button", { name: "Try again" }).click();
-    await expect(screen.shown(page)).toBeVisible();
+    await expect(screen.shown(page, ids)).toBeVisible();
     await expect(page.getByText("Couldn't load this.")).toHaveCount(0);
   });
 
@@ -160,19 +258,19 @@ for (const screen of SCREENS) {
     expectConsoleError(/status of 500/);
     const ids = await solidRecords(request);
     await page.goto(screen.address(ids));
-    await expect(screen.shown(page)).toBeVisible();
+    await expect(screen.shown(page, ids)).toBeVisible();
 
     const broken = await breakApi(page, screen.read(ids));
     await comeBackToTheWindow(page, screen.read(ids));
 
     await expect(page.getByText(OUT_OF_DATE)).toBeVisible();
-    await expect(screen.shown(page)).toBeVisible();
+    await expect(screen.shown(page, ids)).toBeVisible();
     await expect(page.getByText("Couldn't load this.")).toHaveCount(0);
 
     broken.on = false;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByText(OUT_OF_DATE)).toHaveCount(0);
-    await expect(screen.shown(page)).toBeVisible();
+    await expect(screen.shown(page, ids)).toBeVisible();
   });
 }
 
@@ -344,12 +442,27 @@ test("a product that isn't there says it no longer exists, with a link back", as
   await expect(heading(page, "Products")).toBeVisible();
 });
 
+test("a bill that isn't there says it no longer exists, with a link back", async ({
+  page,
+  request,
+  expectConsoleError,
+}) => {
+  expectConsoleError(/status of 404/);
+  const supplier = await addOrganization(request, "Here Supplies");
+  const bill = await addBill(request, { organization_id: supplier.id });
+  await page.goto(`/bills/${bill.id + 1000}`);
+  await expect(heading(page, "This bill no longer exists")).toBeVisible();
+  await page.getByRole("link", { name: "Back to Bills" }).click();
+  await expect(heading(page, "Bills")).toBeVisible();
+});
+
 test.describe("addresses that lead nowhere", () => {
   const SECTIONS = [
     ["deals", "deal", "Deals"],
     ["contacts", "contact", "Contacts"],
     ["organizations", "organization", "Organizations"],
     ["products", "product", "Products"],
+    ["bills", "bill", "Bills"],
   ];
 
   for (const [folder, word, section] of SECTIONS) {
@@ -573,6 +686,22 @@ test.describe("saves that fail", () => {
     expect((await (await request.get(`/api/products/${product.id}`)).json()).active).toBe(true);
   });
 
+  test("a failed Mark paid says so and leaves the bill unpaid", async ({ page, request, expectConsoleError }) => {
+    expectConsoleError(/status of 500/);
+    const supplier = await addOrganization(request, "Hard to pay");
+    const bill = await addBill(request, { organization_id: supplier.id, bill_number: "HTP-1" });
+    await breakApi(page, `/api/bills/${bill.id}`, "PATCH");
+    await page.goto("/bills");
+    await page.getByRole("button", { name: "Mark paid bill HTP-1 from Hard to pay" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Mark paid" }).click();
+
+    await expect(page.getByText("Something went wrong.")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Mark bill HTP-1 paid" })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("row", { name: /^Hard to pay/ }).getByText("Unpaid")).toBeVisible();
+    expect((await (await request.get(`/api/bills/${bill.id}`)).json()).paid_on).toBeNull();
+  });
+
   test("a failed tick puts the follow-up back on the dashboard", async ({ page, request, expectConsoleError }) => {
     expectConsoleError(/status of 500/);
     const { deal } = await addLinkedDeal(request, "Tick fails");
@@ -656,6 +785,28 @@ test.describe("pressing twice", () => {
     await expect(page.getByRole("row", { name: /^Archived once/ })).toHaveCount(0);
     expect(archives).toEqual(['{"active":false}']);
     expect((await (await request.get(`/api/products/${product.id}`)).json()).active).toBe(false);
+  });
+
+  test("a double click on Mark paid in its dialog marks the bill paid once, with no error", async ({
+    page,
+    request,
+  }) => {
+    const supplier = await addOrganization(request, "Paid once");
+    const bill = await addBill(request, { organization_id: supplier.id, bill_number: "PO-1" });
+    const payments: string[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "PATCH" && new URL(sent.url()).pathname === `/api/bills/${bill.id}`) {
+        payments.push(sent.postData() ?? "");
+      }
+    });
+    await page.goto("/bills");
+    await page.getByRole("button", { name: "Mark paid bill PO-1 from Paid once" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Mark paid" }).dblclick();
+
+    await expect(page.getByText("Bill marked paid.")).toBeVisible();
+    await expect(page.getByText("No unpaid bills.")).toBeVisible();
+    expect(payments).toEqual([JSON.stringify({ paid_on: isoDay() })]);
+    expect((await (await request.get(`/api/bills/${bill.id}`)).json()).paid_on).toBe(isoDay());
   });
 
   test("a double click on a card's column button opens one form", async ({ page }) => {
