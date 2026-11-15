@@ -103,7 +103,14 @@ test("the menu shows the initials, the name and email, the themes, Company setti
   await expect(menu(page)).toContainText(me.email);
   await expect(menu(page).getByRole("menuitemradio")).toHaveText(["Light", "Dark", "System"]);
   await expect(menu(page).getByRole("menuitemradio", { checked: true })).toHaveText("Light");
-  await expect(menu(page).getByRole("menuitem")).toHaveText(["Company settings", "Sign out"]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([
+    "Profit and loss",
+    "Balance sheet",
+    "Journal",
+    "Aged balances",
+    "Company settings",
+    "Sign out",
+  ]);
 
   // 240px wide on the raised surface, below the button and lined up with its right edge.
   await expect(menu(page)).toHaveCSS("width", "240px");
@@ -631,3 +638,13 @@ for (const mode of ["light", "dark"] as const) {
     expect(low).toEqual({});
   });
 }
+
+test("choosing Profit and loss in the menu opens its page", async ({ page }) => {
+  await page.goto("/");
+  await menuButton(page).click();
+  await menu(page).getByRole("menuitem", { name: "Profit and loss" }).click();
+
+  await expect(page).toHaveURL(/\/accounting\/profit-and-loss$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Profit and loss");
+  await expect(page.getByRole("region", { name: "Statement" })).toBeVisible();
+});

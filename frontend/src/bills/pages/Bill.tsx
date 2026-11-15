@@ -12,13 +12,14 @@ import {
   SidePanel,
   type HeaderAction,
 } from "../../components/RecordLayout";
+import { AccountingPanel } from "../../books/AccountingPanel";
 import { ApiError } from "../../lib/api";
 import { formatDate } from "../../lib/dates";
 import { price } from "../../lib/money";
 import { useToday } from "../../lib/useToday";
 import { recordId } from "../../lib/validate";
 import { BillForm } from "../BillForm";
-import { CategoryLabel } from "../categories";
+import { CategoryLabel } from "../../components/charts/categories";
 import { DeleteBill } from "../DeleteBill";
 import { MarkPaidDialog } from "../MarkPaidDialog";
 import { useBill, usePaid, type BillDetail } from "../queries";
@@ -67,13 +68,16 @@ function BillRecord({ id }: { id: number }) {
       <BillHeader record={record} onDialog={setDialog} />
       <LoadFailed onPage keeping error={bill.error} onRetry={() => bill.refetch()} />
       <RecordColumns side={<BillDetails record={record} />}>
-        <SidePanel title="Notes">
-          {record.notes ? (
-            <p className="whitespace-pre-wrap">{record.notes}</p>
-          ) : (
-            <p className="text-muted">No notes.</p>
-          )}
-        </SidePanel>
+        <div className="flex flex-col gap-3">
+          <SidePanel title="Notes">
+            {record.notes ? (
+              <p className="whitespace-pre-wrap">{record.notes}</p>
+            ) : (
+              <p className="text-muted">No notes.</p>
+            )}
+          </SidePanel>
+          <AccountingPanel kind="bill" id={record.id} />
+        </div>
       </RecordColumns>
       {dialog === "edit" && <BillForm record={record} onClose={close} />}
       {dialog === "pay" && <MarkPaidDialog bill={record} onClose={close} />}

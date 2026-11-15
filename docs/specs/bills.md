@@ -43,6 +43,7 @@ Part of the [spec](../spec.md), which has the summary, the terms, the quality ru
 ## Bill page
 
 - **E18.** A bill's page shows its bill number, its supplier as a link to the organization, its status chip, its total, the amount before tax and the tax, its category, its bill date, due date and paid date, its notes, and who added it and last changed it, as in R6. It has Edit, Mark paid or Mark unpaid, and Delete. There's no timeline, because nothing is logged against a bill. An address that couldn't be a bill, or names one that doesn't exist, shows "This bill no longer exists" with a link back to Bills (N4).
+- **E26.** A bill's page has an Accounting panel with the entries it made, its own and its paid entries, with the reversals and the entries that replaced them after a change, unpaid or paid again ([J19](books.md#the-journal-and-the-ledgers)), oldest first, read when the page opens and again after Edit, Mark paid or Mark unpaid. The panel is read only, and its accounts link to their ledgers.
 
 ## An organization's bills
 
@@ -51,12 +52,15 @@ Part of the [spec](../spec.md), which has the summary, the terms, the quality ru
 ## The Money section
 
 - **E20.** Bills adds the right side of the dashboard's Money section, beside invoices' side ([V29](invoices.md#money-on-the-dashboard)), under the dashboard's own part (H10). Its figures come from the bills area's own route, worked out by the backend with its today, and are read again when the day changes, as the dashboard's are. Every figure in the row uses bills' totals, tax included, and is exact to the cent however large it gets, past the 2^53 cents a browser's numbers hold exactly.
-- **E21.** **What we owe** is the total of every unpaid bill, overdue ones included, with how many there are. **Overdue** is the total of the overdue bills, with how many. Each links to Bills under that filter (E14). With no unpaid bills, both show $0.00.
+- **E21.** **What we owe** is the total of every unpaid bill, overdue ones included, with how many there are, and equals the total of Aged balances' Suppliers view on today ([X4](aged-balances.md#what-is-owed-and-how-late)). **Overdue** is the total of the overdue bills, with how many. Each links to Bills under that filter (E14). With no unpaid bills, both show $0.00.
 - **E22.** **Due in the next 30 days** is a timeline of the unpaid bills due from today to 30 days from today, both days included, with their total and how many there are beside its heading. Each bill is a bar at its due date, as tall as its total, in its category's color, and bills due on the same day stack. A bill too small to see beside the others is drawn 4px tall, so it can still be seen and pointed at. Overdue bills aren't on it, because Overdue already counts them. Pointing at a bar shows the bill's supplier, number, category and total, for that bill alone, not the whole day. A table behind the chart, for screen readers, lists the bills due, with their due date, supplier, number, category and total. With none due, it says "No bills due in the next 30 days."
 - **E23.** **Spending by category** shows, for each of the last 12 months including the current one, the total of the bills dated in that month, paid or not, stacked by category, with a category too small to see drawn 4px tall, as on the timeline. A bill counts in the month of its bill date, so a bill dated in a later month isn't on it yet. Months with no bills show as zero, and the current month is marked "so far". Above the chart, as above the payments chart beside it, the heading names this month, such as "Spending in November", with this month's total beside last month's. Pointing at a month shows each category's total and the month's. A legend names the six categories beside their swatches, and goes with the chart when there's nothing to show. A table behind the chart, for screen readers, gives each month's total for each category, and the month's total. With no bills in the 12 months, it says "Spending will show here once you've added bills."
 - **E24.** At the limits in Q1, the Money section's data arrives in under 200ms, as the dashboard's does.
 
 Bills also give the cash flow at the top of the Money section its money out, the paid bills by the date they were paid, and its money expected out, the unpaid bills, each on its due date ([Y2 and Y7](cash-flow.md#the-forecast)).
+
+- **E25.** Bills post to the books ([J5 and J6](books.md#entries)), each inside the save that causes it (J7). A bill debits the expense account for its category with its total, tax included, and credits Payable, dated its bill date. Marking it paid, or adding or saving it with a paid date, debits Payable and credits Cash, dated the date it was paid. Marking it unpaid reverses the paid entry. Changing the amount, tax, category or bill date reverses the bill's entry and posts a new one, and does the same for its paid entry when the total or the paid date changed. Deleting a bill reverses its entries. A save that changes none of those, such as its notes, due date, bill number or supplier, posts nothing. So Payable always equals what we owe (J11).
+
 
 ## Screens
 
@@ -67,6 +71,8 @@ Laid out like the other tables ([Screens](records.md#screens)): the page title w
 ### Bill page
 
 The two columns of the other record pages ([Screens](records.md#screens)). The page title is "Bill INV-0042", with the status chip after it and Edit, Mark paid or Mark unpaid, and Delete at the right. Under the title, "From Northwind Software" names the supplier, as a link. The left column holds the details panel: the total in JetBrains Mono at the headline figure size, then the amount before tax and the tax, the category with its swatch, the bill date, the due date and the paid date, or "Not paid yet" in muted ink, with the lines from R6 at its foot in muted ink. The right column holds the notes on a panel of their own, in body text with their line breaks kept, or "No notes." in muted ink.
+
+The notes panel is followed by the Accounting panel ([Accounting panels](books.md#accounting-panels)) in the right column.
 
 ### Bill form
 

@@ -3,9 +3,11 @@
 Six suppliers are added for the bills, and four of the CRM's customers send bills too, so
 each of those is both. The CRM's sample data goes in first, because these point at its
 organizations. Every bill is due 30 days after its bill date. One due today or later is
-unpaid, and one due before today was paid a few days before its due date, apart from three
-left overdue. Those three, and the two latest trips, are dated from the seeding day, which
-keeps at least 6 bills due in the next 30 days and 3 overdue whatever the day.
+unpaid, and one due before today was paid a few days before its due date, apart from nine
+left overdue. Those, and the two latest trips, are dated from the seeding day, which keeps
+at least 6 bills due in the next 30 days and 9 overdue whatever the day. Two different
+suppliers have unpaid bills in each part of the aged balances: not yet due, and 1 to 30, 31 to
+60, 61 to 90 and over 90 days past due, and Wayfarer Travel has some in four of them.
 """
 
 from dataclasses import dataclass
@@ -14,8 +16,9 @@ from typing import Any
 
 from sqlalchemy import Connection, insert, select
 
-from accountable import who
+from accountable import months, who
 from accountable.bills.tables import bill_number_key, bills
+from accountable.books import post as books_post
 from accountable.crm.tables import organizations
 from accountable.sample import moment, put_down_to
 from accountable.users import add_missing_teammates, teammate
@@ -62,7 +65,7 @@ NUMBERING = {
 # Hosting rises with use, oldest month first.
 HOSTING = [38000, 38650, 39120, 39800, 40240, 41075, 41630, 42310, 43085, 43900, 44720, 46000]
 # A contractor's month of hours, oldest first.
-CONTRACTOR = [712500, 680000, 745000, 798750, 820000, 765000, 884500, 920000, 836250, 790000, 857500, 903750]
+CONTRACTOR = [212500, 230000, 245000, 298750, 320000, 365000, 484500, 620000, 736250, 790000, 857500, 903750]
 # Days before the seeding day, amount and tax in cents, and where to. Most carry tax.
 TRIPS = [
     (5, 48000, 4260, "Train and hotel, visit to Lantern Hotels"),
@@ -80,8 +83,8 @@ TRIPS = [
     (287, 54000, 0, "Train and hotel, Copperline Electric"),
     (330, 112000, 9940, "Flights, Greyfriars Property"),
 ]
-# The trip left overdue.
-OVERDUE_TRIP_DAYS = 42
+# The trips left overdue, which are due 12, 31, 74 and 100 days ago.
+OVERDUE_TRIP_DAYS = {42, 61, 104, 130}
 # Online ads, in 9 of the 12 months: one dated from the seeding day and left overdue, and the
 # rest on the 20th, with their months back.
 OVERDUE_ADS = (36, 195000)
@@ -153,11 +156,27 @@ def _one_offs(today: date) -> list[SampleBill]:
         return today - timedelta(days=days)
 
     return [
-        SampleBill("Marlowe Insurance", "other", days_ago(300), 640000, notes="Yearly business insurance"),
-        SampleBill("Ironwood Joinery", "office", days_ago(268), 790000, 70113, "Desks and shelving for the office"),
+        SampleBill("Marlowe Insurance", "other", days_ago(150), 640000, notes="Yearly business insurance"),
+        SampleBill("Ironwood Joinery", "office", days_ago(110), 790000, 70113, "Desks and shelving for the office"),
         SampleBill("Saltmarsh Studio", "marketing", days_ago(240), 285000, notes="Brochure design"),
-        SampleBill("Northwind Software", "software", days_ago(212), 960000, 85200, "Yearly license renewal"),
-        SampleBill("Signalbox Marketing", "marketing", days_ago(121), 1250000, 110938, "Stand at the trade show"),
+        SampleBill(
+            "Northwind Software",
+            "software",
+            days_ago(212),
+            960000,
+            85200,
+            "Yearly license renewal",
+            left_overdue=True,
+        ),
+        SampleBill(
+            "Signalbox Marketing",
+            "marketing",
+            days_ago(110),
+            1250000,
+            110938,
+            "Stand at the trade show",
+            left_overdue=True,
+        ),
         SampleBill(
             "Saltmarsh Studio",
             "marketing",
@@ -178,7 +197,7 @@ def _trips(today: date) -> list[SampleBill]:
             cents,
             tax,
             notes,
-            left_overdue=days == OVERDUE_TRIP_DAYS,
+            left_overdue=days in OVERDUE_TRIP_DAYS,
         )
         for days, cents, tax, notes in TRIPS
     ]
@@ -209,11 +228,15 @@ def sample_bills(today: date) -> list[SampleBill]:
 
 
 def paid_on(bill: SampleBill, number: int, today: date) -> date | None:
-    """A few days before its due date, once that's passed, and never before its bill date or after today."""
+    """A few days before its due date, once that's passed, and never before its bill date or after today.
+
+    Nor before the cash flow's first day, where the opening balance starts, so the sample data moves no
+    cash before it and the books' Cash agrees with the cash flow's (J13).
+    """
     due = bill.bill_date + DUE_AFTER
     if due >= today or bill.left_overdue:
         return None
-    return due - timedelta(days=2 + number % 5)
+    return max(due - timedelta(days=2 + number % 5), months.last_months(today)[0].first_day)
 
 
 def _put_down_to(number: int, bill_date: date, paid: date | None, today: date) -> dict[str, Any]:
@@ -258,7 +281,8 @@ def fill(conn: Connection, today: date) -> None:
     supplier_ids = {**_add_suppliers(conn, today), **_customers(conn)}
     counted = dict.fromkeys(NUMBERING, 0)
     rows = []
-    for number, bill in enumerate(sample_bills(today)):
+    named = sample_bills(today)
+    for number, bill in enumerate(named):
         pattern, start = NUMBERING[bill.supplier]
         bill_number = pattern.format(start + counted[bill.supplier])
         counted[bill.supplier] += 1
@@ -278,4 +302,32 @@ def fill(conn: Connection, today: date) -> None:
                 **_put_down_to(number, bill.bill_date, paid, today),
             }
         )
-    conn.execute(insert(bills), rows)
+    ids = conn.scalars(insert(bills).returning(bills.c.id, sort_by_parameter_order=True), rows)
+    for bill_id, row, bill in zip(ids, rows, named, strict=True):
+        _post(conn, bill_id, row, bill.supplier)
+
+
+def _post(conn: Connection, bill_id: int, row: dict[str, Any], supplier: str) -> None:
+    """The bill's entry, put down to who added it, and its paid entry, put down to who marked it paid."""
+    total = row["amount_cents"] + row["tax_cents"]
+    books_post.bill_added(
+        conn,
+        bill_id=bill_id,
+        on=row["bill_date"],
+        total_cents=total,
+        category=row["category"],
+        bill_number=row["bill_number"],
+        supplier=supplier,
+        user=row["created_by"],
+        now=row["created_at"],
+    )
+    if row["paid_on"] is not None:
+        books_post.bill_paid(
+            conn,
+            bill_id=bill_id,
+            on=row["paid_on"],
+            total_cents=total,
+            bill_number=row["bill_number"],
+            user=row["updated_by"],
+            now=row["updated_at"],
+        )

@@ -39,7 +39,9 @@ LOCAL_SIGN_IN = [(method, path) for method, path in routes(app) if path.startswi
 # Every route that needs a token, the same in both copies.
 ROUTES = [route for route in routes(app) if route not in LOCAL_SIGN_IN]
 WRITES = [(method, path) for method, path in ROUTES if method in ("POST", "PATCH")]
-RECORD_ROUTES = [(method, path) for method, path in ROUTES if "{" in path]
+# A route named by an account's key and not a record's id: it refuses a key that isn't one of the twelve with a 404.
+KEYED_ROUTES = [("GET", "/api/books/accounts/{key}/ledger")]
+RECORD_ROUTES = [(method, path) for method, path in ROUTES if "{" in path and (method, path) not in KEYED_ROUTES]
 READS = [(method, path) for method, path in ROUTES if method == "GET" and "{" not in path]
 TIMELINES = [path for method, path in ROUTES if path.endswith("/timeline")]
 
@@ -54,6 +56,7 @@ def with_id(path: str, value: object) -> str:
 SAMPLE_BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/deals/{deal_id}/move"): {"stage": "new"},
     ("POST", "/api/invoices"): {"deal_id": 1},
+    ("POST", "/api/invoices/from-quote/{quote_id}"): {},
     ("POST", "/api/invoices/{invoice_id}/payments"): {"paid_on": "2026-10-01", "amount_cents": 100, "method": "card"},
 }
 
@@ -67,7 +70,10 @@ DESCRIBED = app.openapi()
 SAMPLE_QUERY_VALUES = {"string": "harbor", "integer": "1"}
 # A value a route's own check takes, where it needs one. The fixed today is Oct 31, 2026,
 # so November is a forecast month.
-SAMPLE_QUERIES = {("GET", "/api/cash-flow/expected"): {"month": "2026-11"}}
+SAMPLE_QUERIES = {
+    ("GET", "/api/cash-flow/expected"): {"month": "2026-11"},
+    ("GET", "/api/books/profit-and-loss/entries"): {"figure": "revenue", "from": "2026-10-01", "to": "2026-10-31"},
+}
 # Text JSON can carry that a database can't store: Postgres refuses a NUL character
 # outright, and neither database can encode half of a two-part character.
 UNSTORABLE_TEXT = {"a NUL character": "Harbor\x00Pine", "half of a two-part character": "\ud800"}
@@ -94,6 +100,15 @@ def is_text(schema: dict[str, Any]) -> bool:
     return schema.get("type") == "string" or any(is_text(choice) for choice in schema.get("anyOf", []))
 
 
+def is_text_query(schema: dict[str, Any]) -> bool:
+    """Text, or a query that may be given more than once, such as the entries' account."""
+    return is_text(schema) or any(
+        is_text(choice.get("items", {}))
+        for choice in [schema, *schema.get("anyOf", [])]
+        if choice.get("type") == "array"
+    )
+
+
 def body_text_fields(method: str, path: str) -> list[str]:
     """The text fields in the route's request body, dates and choices included, as the app describes them."""
     body = DESCRIBED["paths"][path][method.lower()].get("requestBody")
@@ -112,7 +127,7 @@ QUERY_TEXT = [
     (method, path, parameter["name"])
     for method, path in ROUTES
     for parameter in query_parameters(method, path)
-    if is_text(parameter["schema"])
+    if is_text_query(parameter["schema"])
 ]
 
 
@@ -139,6 +154,7 @@ def test_the_routes_were_found():
     assert ("PATCH", "/api/invoices/{invoice_id}", "bill_to") in BODY_TEXT
     assert ("POST", "/api/invoices/{invoice_id}/issue", "bill_to") in BODY_TEXT
     assert ("POST", "/api/invoices/{invoice_id}/void") in WRITES
+    assert ("POST", "/api/invoices/from-quote/{quote_id}") in WRITES
     assert ("POST", "/api/invoices/{invoice_id}/payments", "reference") in BODY_TEXT
     assert ("POST", "/api/invoices/{invoice_id}/payments", "method") in BODY_TEXT
     assert ("POST", "/api/invoices/{invoice_id}/payments", "paid_on") in BODY_TEXT
@@ -173,7 +189,36 @@ def test_the_routes_were_found():
     assert ("GET", "/api/cash-flow") in READS
     assert ("GET", "/api/cash-flow/expected") in READS
     assert target("GET", "/api/cash-flow/expected") == "/api/cash-flow/expected?month=2026-11"
-    assert QUERY_TEXT == [("GET", "/api/cash-flow/expected", "month"), ("GET", "/api/search", "q")]
+    for route in [("GET", "/api/aged-balances/customers"), ("GET", "/api/aged-balances/suppliers")]:
+        assert route in READS, route
+    for route in [
+        ("GET", "/api/books/balances"),
+        ("GET", "/api/books/months"),
+        ("GET", "/api/books/entries"),
+        ("GET", "/api/books/profit-and-loss"),
+        ("GET", "/api/books/profit-and-loss/entries"),
+    ]:
+        assert route in READS, route
+    assert KEYED_ROUTES[0] in ROUTES and KEYED_ROUTES[0] not in RECORD_ROUTES
+    assert QUERY_TEXT == [
+        ("GET", "/api/aged-balances/customers", "on"),
+        ("GET", "/api/aged-balances/suppliers", "on"),
+        ("GET", "/api/books/balances", "on"),
+        ("GET", "/api/books/entries", "account"),
+        ("GET", "/api/books/entries", "from"),
+        ("GET", "/api/books/entries", "to"),
+        ("GET", "/api/books/entries", "q"),
+        ("GET", "/api/books/entries", "kind"),
+        ("GET", "/api/books/months", "from"),
+        ("GET", "/api/books/months", "to"),
+        ("GET", "/api/books/profit-and-loss", "period"),
+        ("GET", "/api/books/profit-and-loss", "on"),
+        ("GET", "/api/books/profit-and-loss/entries", "figure"),
+        ("GET", "/api/books/profit-and-loss/entries", "from"),
+        ("GET", "/api/books/profit-and-loss/entries", "to"),
+        ("GET", "/api/cash-flow/expected", "month"),
+        ("GET", "/api/search", "q"),
+    ]
     assert LOCAL_SIGN_IN_TEXT == [("POST", "/api/local/sign-in", "user_id")]
     assert len(RECORD_ROUTES) > 15
     assert LOCAL_SIGN_IN == [("GET", "/api/local/teammates"), ("POST", "/api/local/sign-in")]
@@ -217,6 +262,12 @@ def test_a_good_token_gets_past_the_check(copy, method, path):
 @pytest.mark.parametrize("value", [TOO_BIG, -TOO_BIG, 10**30, 0, -1, "abc", "1.5"])
 def test_an_id_that_cant_be_a_record_is_refused(client, method, path, value):
     assert client.request(method, with_id(path, value), json=sample_body(method, path)).status_code == 422
+
+
+@pytest.mark.parametrize("value", ["bank", "1", "Cash", "cash%00"])
+def test_a_key_that_is_not_an_account_is_simply_missing(client, value):
+    [(method, path)] = KEYED_ROUTES
+    assert client.request(method, with_id(path, value)).status_code == 404
 
 
 @pytest.mark.parametrize("method, path", RECORD_ROUTES)

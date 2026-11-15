@@ -4,8 +4,9 @@ import { Download, Trash2 } from "lucide-react";
 import { AlertDialog } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FormProvider, useForm, useWatch, type UseFormReturn } from "react-hook-form";
-import { useBlocker, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useNavigate, useParams } from "react-router";
 
+import { AccountingPanel } from "../../books/AccountingPanel";
 import { useCompanySettings, useSavedLogo, type CompanySettings } from "../../company/settings";
 import { totals } from "../../company/tax";
 import { Chip } from "../../components/Chip";
@@ -218,8 +219,13 @@ function useOnce() {
 
 function useDraftForm(invoice: InvoiceDetail) {
   const form = useForm<DraftValues>({ resolver: zodResolver(draftSchema), defaultValues: toDraftValues(invoice) });
-  const { reset, formState } = form;
+  const { reset, formState, trigger } = form;
   const filledFrom = useRef(invoice);
+  const fromQuote = invoice.quote !== null;
+  // A copy of a quote can break a rule a typed draft keeps (V38), so its messages show at once, beside their fields.
+  useEffect(() => {
+    if (fromQuote) void trigger();
+  }, [fromQuote, trigger]);
   // A newer read, such as a teammate's save, fills the form only if nothing has been typed since it was
   // filled, as in B10. Only a new reply does: refilling the same one would remount every line's boxes.
   useEffect(() => {
@@ -320,6 +326,8 @@ function DraftPage({ invoice, settings, logoUrl, refetch, notice }: Shown) {
           </button>
         </div>
       </PageHeader>
+      <FromQuote invoice={invoice} />
+      <TaxChanged invoice={invoice} />
       {notice}
       <form noValidate onSubmit={(event) => event.preventDefault()}>
         <Columns
@@ -356,6 +364,33 @@ function DraftPage({ invoice, settings, logoUrl, refetch, notice }: Shown) {
         />
       )}
     </FormProvider>
+  );
+}
+
+/** "From quote QT-0004", under the title of an invoice made from a quote, whatever its status (V36). */
+function FromQuote({ invoice }: { invoice: InvoiceDetail }) {
+  if (!invoice.quote) return null;
+  return (
+    <div className="px-6 pb-2.5">
+      <Link to={`/quotes/${invoice.quote.id}`} className="link text-[13px] leading-[18px] text-muted">
+        From quote <span className="num">{invoice.quote.number}</span>
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * A draft made from a quote says when the tax rate has changed since, while the two rates differ
+ * and it is a draft. The draft's own rate is the settings' as they are now (V35).
+ */
+function TaxChanged({ invoice }: { invoice: InvoiceDetail }) {
+  const { quote } = invoice;
+  if (!quote || quote.tax_rate === invoice.tax_rate) return null;
+  return (
+    <p role="status" className="panel mx-5 mb-2.5 px-4 py-2">
+      {quote.number} was priced with {quote.tax_label ?? "tax"} at {quote.tax_rate}%. Company settings now say{" "}
+      {invoice.tax_rate}%, so this draft's tax is worked out at {invoice.tax_rate}%.
+    </p>
   );
 }
 
@@ -413,12 +448,14 @@ function IssuedPage({ invoice, settings, logoUrl, notice }: Shown) {
           </button>
         </div>
       </PageHeader>
+      <FromQuote invoice={invoice} />
       {notice}
       <Columns
         side={
           <>
             <Details invoice={invoice} />
             <Payments invoice={invoice} onRecord={() => setDialog("pay")} onDelete={setDialog} />
+            <AccountingPanel kind="invoice" id={invoice.id} />
           </>
         }
         preview={<DocumentDrawing values={preview} logoUrl={logoUrl} />}
@@ -508,6 +545,10 @@ function Details({ invoice }: { invoice: InvoiceDetail }) {
 function Payments(props: { invoice: InvoiceDetail; onRecord: () => void; onDelete: (payment: Payment) => void }) {
   const { invoice } = props;
   const canPay = invoice.status === "issued" && invoice.owed_cents > 0;
+  // The payments whose entries are showing under their row (V33).
+  const [opened, setOpened] = useState<number[]>([]);
+  const toggle = (id: number) =>
+    setOpened((now) => (now.includes(id) ? now.filter((other) => other !== id) : [...now, id]));
   return (
     <SidePanel
       title="Payments"
@@ -524,26 +565,40 @@ function Payments(props: { invoice: InvoiceDetail; onRecord: () => void; onDelet
       ) : (
         <ul aria-label="Payments">
           {invoice.payments.map((payment) => (
-            <li key={payment.id} className="flex items-start justify-between gap-3 py-1.5" data-testid="payment">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-baseline gap-x-3">
-                  <span className="num text-[13px]">{formatDate(payment.paid_on)}</span>
-                  <span className="num text-[13px] font-medium">{price(payment.amount_cents)}</span>
-                  <span>{methodLabel(payment.method)}</span>
-                  {payment.reference && <span className="truncate">{payment.reference}</span>}
+            <li key={payment.id} className="py-1.5" data-testid="payment">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-3">
+                    <span className="num text-[13px]">{formatDate(payment.paid_on)}</span>
+                    <span className="num text-[13px] font-medium">{price(payment.amount_cents)}</span>
+                    <span>{methodLabel(payment.method)}</span>
+                    {payment.reference && <span className="truncate">{payment.reference}</span>}
+                  </div>
+                  <div className="text-[13px] leading-[18px] text-muted">
+                    <WhoAndWhen action="Recorded" person={payment.created_by} at={payment.created_at} />
+                  </div>
                 </div>
-                <div className="text-[13px] leading-[18px] text-muted">
-                  <WhoAndWhen action="Recorded" person={payment.created_by} at={payment.created_at} />
+                <div className="flex flex-none items-center gap-1">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    aria-expanded={opened.includes(payment.id)}
+                    aria-label={`Accounting for payment of ${price(payment.amount_cents)}`}
+                    onClick={() => toggle(payment.id)}
+                  >
+                    Accounting
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn flex-none"
+                    aria-label={`Delete payment of ${price(payment.amount_cents)}`}
+                    onClick={() => props.onDelete(payment)}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                className="icon-btn flex-none"
-                aria-label={`Delete payment of ${price(payment.amount_cents)}`}
-                onClick={() => props.onDelete(payment)}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
+              {opened.includes(payment.id) && <AccountingPanel kind="payment" id={payment.id} heading={false} />}
             </li>
           ))}
         </ul>

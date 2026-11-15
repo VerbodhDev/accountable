@@ -1,9 +1,10 @@
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
-from accountable import db
+from accountable import cli, db
 from accountable.bills.tables import bill_number_key, bills
+from accountable.books.tables import journal_entries, journal_lines
 from accountable.company import documents
 from accountable.company.tables import company_logo, company_settings, number_counters
 from accountable.crm.tables import activities, contacts, deals, organizations, stage_changes
@@ -17,8 +18,24 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from conftest import insert_row
-from sqlalchemy import Date, DateTime, Integer, Text, column, delete, func, insert, inspect, select, table, update
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Engine,
+    Integer,
+    Text,
+    column,
+    delete,
+    event,
+    func,
+    insert,
+    inspect,
+    select,
+    table,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
+from test_books_checks import hold
 
 
 def live() -> dict:
@@ -875,3 +892,538 @@ def test_on_postgres_the_opening_balance_is_64_bit_and_kept_whole(postgres_sql):
         "ALTER TABLE company_settings ADD CONSTRAINT ck_company_settings_opening_balance_together "
         "CHECK ((opening_balance_cents IS NULL) = (opening_balance_on IS NULL));"
     ) in postgres_sql
+
+
+# The books (0012)
+
+
+def at_0011_with_records(path, *, count: int = 1, opening: int | None = 4_000_000) -> None:
+    """A database at 0011 with `count` of each kind: an invoice issued with tax and one untaxed, a void one, a
+    draft, payments, an unpaid bill and a paid one, and the opening balance."""
+    fill_at(path, "0011")
+    with db.writing() as conn:
+        deal = conn.scalar(select(deals.c.id))
+        organization = conn.scalar(select(organizations.c.id))
+        issued = {"deal_id": deal, "organization_id": organization, "created_at": WHEN, "updated_at": WHEN}
+        for number in range(count):
+            day = date(2026, 3, 1) + timedelta(days=number)
+            taxed = insert_row(
+                conn,
+                invoices,
+                status="issued",
+                issue_date=day,
+                subtotal_cents=100000,
+                tax_cents=8875,
+                total_cents=108875,
+                **issued,
+            )
+            untaxed = insert_row(
+                conn,
+                invoices,
+                status="issued",
+                issue_date=day,
+                subtotal_cents=50000,
+                tax_cents=0,
+                total_cents=50000,
+                **issued,
+            )
+            voided = insert_row(
+                conn,
+                invoices,
+                status="void",
+                issue_date=day,
+                subtotal_cents=20000,
+                tax_cents=1775,
+                total_cents=21775,
+                **issued,
+            )
+            insert_row(conn, invoices, status="draft", **issued)
+            insert_row(conn, payments, invoice_id=taxed, paid_on=day, amount_cents=60000, method="card")
+            insert_row(conn, payments, invoice_id=untaxed, paid_on=day, amount_cents=50000, method="card")
+            for paid_on in (None, day):
+                insert_row(
+                    conn,
+                    bills,
+                    organization_id=organization,
+                    bill_number=f"B-{number}-{paid_on}",
+                    bill_number_key=f"b-{number}-{paid_on}",
+                    bill_date=day,
+                    due_date=day,
+                    amount_cents=70000,
+                    tax_cents=5000,
+                    category="travel",
+                    paid_on=paid_on,
+                    created_at=WHEN,
+                    updated_at=WHEN,
+                )
+            assert voided
+        if opening is not None:
+            conn.execute(
+                update(company_settings).values(opening_balance_cents=opening, opening_balance_on=date(2026, 1, 1))
+            )
+    db.dispose()
+
+
+@pytest.fixture
+def database_from_before_the_books(tmp_path, monkeypatch):
+    path = tmp_path / "before-books.db"
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(path))
+    db.dispose()
+    at_0011_with_records(path)
+    yield path
+    db.dispose()
+
+
+def posted() -> list[tuple]:
+    """Each entry as (kind, source id, event, date, who, lines), in order."""
+    with db.reading() as conn:
+        entries = conn.execute(select(journal_entries).order_by(journal_entries.c.id)).all()
+        lines = conn.execute(select(journal_lines).order_by(journal_lines.c.id)).all()
+    return [
+        (
+            entry.kind,
+            entry.source_id,
+            entry.event,
+            entry.entry_date,
+            entry.created_by,
+            sorted((line.account, line.debit_cents, line.credit_cents) for line in lines if line.entry_id == entry.id),
+        )
+        for entry in entries
+    ]
+
+
+def test_upgrading_posts_the_entries_for_every_record_that_already_exists(database_from_before_the_books):
+    assert db.prepare_database(nothing) is False
+    march_1 = date(2026, 3, 1)
+    with db.reading() as conn:
+        ids = {
+            "taxed": conn.scalar(select(invoices.c.id).where(invoices.c.total_cents == 108875)),
+            "untaxed": conn.scalar(select(invoices.c.id).where(invoices.c.total_cents == 50000)),
+            "void": conn.scalar(select(invoices.c.id).where(invoices.c.status == "void")),
+        }
+    found = posted()
+    taxed_lines = sorted([("receivable", 108875, 0), ("revenue", 0, 100000), ("tax_payable", 0, 8875)])
+    assert ("invoice", ids["taxed"], "invoice_issued", march_1, None, taxed_lines) in found
+    assert (
+        "invoice",
+        ids["untaxed"],
+        "invoice_issued",
+        march_1,
+        None,
+        [("receivable", 50000, 0), ("revenue", 0, 50000)],
+    ) in found
+    assert ("payment", 1, "payment_recorded", march_1, None, [("cash", 60000, 0), ("receivable", 0, 60000)]) in found
+    assert ("bill", 1, "bill_added", march_1, None, [("expense_travel", 75000, 0), ("payable", 0, 75000)]) in found
+    assert ("bill_payment", 2, "bill_paid", march_1, None, [("cash", 0, 75000), ("payable", 75000, 0)]) in found
+    assert (
+        "opening_balance",
+        1,
+        "opening_balance_set",
+        date(2026, 1, 1),
+        None,
+        [("cash", 4_000_000, 0), ("owners_equity", 0, 4_000_000)],
+    ) in found
+    assert len(found) == 2 + 1 + 1 + 2 + 3 + 1 and {entry[4] for entry in found} == {None}
+    hold()
+
+
+def test_a_void_invoice_gets_its_issue_entry_and_a_reversal_dated_the_same_and_drafts_get_none(
+    database_from_before_the_books,
+):
+    db.prepare_database(nothing)
+    with db.reading() as conn:
+        void_id = conn.scalar(select(invoices.c.id).where(invoices.c.status == "void"))
+        draft_id = conn.scalar(select(invoices.c.id).where(invoices.c.status == "draft"))
+        reversal = conn.execute(select(journal_entries).where(journal_entries.c.event == "invoice_voided")).one()
+        original = conn.execute(select(journal_entries).where(journal_entries.c.id == reversal.reverses_id)).one()
+    assert (original.source_id, original.event, reversal.source_id, reversal.entry_date) == (
+        void_id,
+        "invoice_issued",
+        void_id,
+        original.entry_date,
+    )
+    assert draft_id not in {entry[1] for entry in posted() if entry[0] == "invoice"}
+
+
+def test_an_overdrawn_opening_balance_is_posted_with_the_sides_swapped(tmp_path, monkeypatch):
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(tmp_path / "overdrawn.db"))
+    db.dispose()
+    at_0011_with_records(tmp_path / "overdrawn.db", opening=-125000)
+    db.prepare_database(nothing)
+    [opening] = [entry for entry in posted() if entry[0] == "opening_balance"]
+    assert opening[5] == [("cash", 0, 125000), ("owners_equity", 125000, 0)]
+    hold()
+    db.dispose()
+
+
+def test_an_opening_balance_of_zero_gets_no_entry(tmp_path, monkeypatch):
+    """J3: an event with no money in it posts no entry at all, in the migration as in the app."""
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(tmp_path / "zero.db"))
+    db.dispose()
+    at_0011_with_records(tmp_path / "zero.db", opening=0)
+    db.prepare_database(nothing)
+    assert [entry for entry in posted() if entry[0] == "opening_balance"] == []
+    with db.reading() as conn:
+        empty = conn.scalar(
+            select(func.count())
+            .select_from(journal_entries)
+            .where(journal_entries.c.id.not_in(select(journal_lines.c.entry_id)))
+        )
+    assert empty == 0
+    hold()
+    db.dispose()
+
+
+def test_a_database_with_no_records_gets_no_entries(tmp_path, monkeypatch):
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(tmp_path / "bare.db"))
+    db.dispose()
+    db._upgrade(tmp_path / "bare.db", "0011")
+    db.prepare_database(nothing)
+    assert posted() == []
+    db.dispose()
+
+
+def statements_to_upgrade(path) -> int:
+    seen: list[str] = []
+
+    def count(_conn, _cursor, statement, *_rest):
+        seen.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", count)
+    try:
+        db.prepare_database(nothing)
+    finally:
+        event.remove(Engine, "before_cursor_execute", count)
+        db.dispose()
+    return len(seen)
+
+
+def test_it_takes_the_same_number_of_queries_for_5_records_as_for_50(tmp_path, monkeypatch):
+    totals = []
+    for count in (5, 50):
+        path = tmp_path / f"records-{count}.db"
+        monkeypatch.setenv("ACCOUNTABLE_DB", str(path))
+        db.dispose()
+        at_0011_with_records(path, count=count)
+        totals.append(statements_to_upgrade(path))
+    assert totals[0] == totals[1]
+
+
+def test_the_books_tables_match_the_migrations(database):
+    assert {"journal_entries", "journal_lines"} <= set(live())
+    assert live()["journal_lines"]["indexes"].keys() == {
+        "ix_journal_lines_entry_id",
+        "ix_journal_lines_account",
+        "ix_journal_lines_account_entry",
+    }
+    assert live()["journal_entries"]["indexes"]["ix_journal_entries_reverses_id"] == ("reverses_id",)
+
+
+def test_the_database_refuses_a_line_on_neither_side_both_sides_or_an_unknown_account(database):
+    with db.writing() as conn:
+        entry = insert_row(
+            conn,
+            journal_entries,
+            entry_date=date(2026, 1, 1),
+            kind="bill",
+            source_id=1,
+            event="x",
+            link="/",
+            created_at=WHEN,
+        )
+    line = {"entry_id": entry, "created_at": WHEN}
+    for bad in (
+        {"account": "cash", "debit_cents": 0, "credit_cents": 0},
+        {"account": "cash", "debit_cents": 5, "credit_cents": 5},
+        {"account": "cash", "debit_cents": -5, "credit_cents": 0},
+        {"account": "bank", "debit_cents": 5, "credit_cents": 0},
+    ):
+        with pytest.raises(IntegrityError), db.writing() as conn:
+            conn.execute(insert(journal_lines).values(**line, **bad))
+
+
+def test_an_entry_can_be_reversed_only_once(database):
+    entry = {
+        "entry_date": date(2026, 1, 1),
+        "kind": "bill",
+        "source_id": 1,
+        "event": "x",
+        "link": "/",
+        "created_at": WHEN,
+    }
+    with db.writing() as conn:
+        first = insert_row(conn, journal_entries, **entry)
+        insert_row(conn, journal_entries, reverses_id=first, **entry)
+    with pytest.raises(IntegrityError), db.writing() as conn:
+        insert_row(conn, journal_entries, reverses_id=first, **entry)
+
+
+def test_on_postgres_the_books_tables_get_row_level_security_and_64_bit_cents_and_the_checks(postgres_sql):
+    for name in ("journal_entries", "journal_lines"):
+        assert f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY" in postgres_sql, name
+    lines = created(postgres_sql, "journal_lines")
+    assert "debit_cents BIGINT NOT NULL" in lines and "credit_cents BIGINT NOT NULL" in lines
+    assert "ck_journal_lines_account CHECK (account IN ('cash'" in lines
+    assert "ck_journal_lines_one_side" in lines
+    assert "CREATE UNIQUE INDEX ix_journal_entries_reverses_id ON journal_entries (reverses_id)" in postgres_sql
+
+
+# The journal's wording (0014)
+
+_old_entries = table(
+    "journal_entries",
+    column("entry_date", Date),
+    column("kind", Text),
+    column("source_id", Integer),
+    column("event", Text),
+    column("link", Text),
+    column("reverses_id", Integer),
+    column("created_at", DateTime),
+)
+
+
+def the_migration():
+    import importlib.util
+
+    path = next(db.MIGRATIONS.glob("versions/0014_*.py"))
+    spec = importlib.util.spec_from_file_location("migration_0014", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def at_0012_with_records(path, *, extra: bool = False) -> None:
+    at_0011_with_records(path)
+    db._upgrade(path, "0012")
+    if extra:
+        # Entries the migration at 0012 never posted: a bill that has since been deleted, and a change to a real one.
+        with db.writing() as conn:
+            for kind, source_id, event, link in (
+                ("bill", 99, "bill_added", "/bills/99"),
+                ("bill", 99, "bill_deleted", "/bills/99"),
+                ("bill", 1, "bill_changed", "/bills/1"),
+                ("bill_payment", 2, "bill_unpaid", "/bills/2"),
+                ("payment", 1, "payment_deleted", "/invoices/1"),
+                ("opening_balance", 1, "opening_balance_changed", "/settings"),
+            ):
+                conn.execute(
+                    insert(_old_entries).values(
+                        entry_date=date(2026, 3, 1),
+                        kind=kind,
+                        source_id=source_id,
+                        event=event,
+                        link=link,
+                        created_at=WHEN,
+                    )
+                )
+    db.dispose()
+
+
+@pytest.fixture
+def database_at_0012(tmp_path, monkeypatch):
+    path = tmp_path / "at-0012.db"
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(path))
+    db.dispose()
+    at_0012_with_records(path, extra=True)
+    yield path
+    db.dispose()
+
+
+# The quote an invoice was made from (0013)
+
+
+QUOTE = {
+    "number": "QT-0001",
+    "status": "accepted",
+    "quote_date": date(2026, 3, 1),
+    "valid_until": date(2026, 3, 31),
+    "subtotal_cents": 100000,
+    "created_at": WHEN,
+    "updated_at": WHEN,
+}
+
+
+@pytest.fixture
+def database_from_before_invoice_quotes(tmp_path, monkeypatch):
+    """At 0012 with the invoices, an accepted quote and the books' entries that came with them."""
+    path = tmp_path / "before-invoice-quotes.db"
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(path))
+    db.dispose()
+    at_0011_with_records(path)
+    db._upgrade(path, "0012")
+    with db.writing() as conn:
+        insert_row(conn, quotes, deal_id=conn.scalar(select(deals.c.id)), **QUOTE)
+    db.dispose()
+    yield path
+    db.dispose()
+
+
+def wording() -> list[tuple]:
+    with db.reading() as conn:
+        rows = conn.execute(select(journal_entries).order_by(journal_entries.c.id)).all()
+    return [(row.kind, row.source_id, row.event, row.description, row.document) for row in rows]
+
+
+def test_0014_fills_in_each_kind_of_entry_in_the_wording(database_at_0012):
+    db.prepare_database(nothing)
+    with db.reading() as conn:
+        invoice_number = {
+            row.id: row.total_cents for row in conn.execute(select(invoices.c.id, invoices.c.total_cents))
+        }
+        organization = conn.scalar(select(organizations.c.name))
+    found = wording()
+    assert invoice_number
+    # Nothing in 0011's invoices has a number, so their entries carry none and the event's own words.
+    assert ("invoice", 1, "invoice_issued", "Invoice issued", None) in found
+    assert ("invoice", 3, "invoice_voided", "Invoice voided", None) in found
+    assert ("payment", 1, "payment_recorded", "Payment received", None) in found
+    assert ("bill", 1, "bill_added", f"Bill B-0-None from {organization}", "B-0-None") in found
+    assert ("bill_payment", 2, "bill_paid", f"Bill B-0-{date(2026, 3, 1)} paid", f"B-0-{date(2026, 3, 1)}") in found
+    assert ("opening_balance", 1, "opening_balance_set", "Opening balance set", None) in found
+    assert ("opening_balance", 1, "opening_balance_changed", "Opening balance changed", None) in found
+    assert ("bill", 1, "bill_changed", "Bill B-0-None changed", "B-0-None") in found
+    assert (
+        "bill_payment",
+        2,
+        "bill_unpaid",
+        f"Bill B-0-{date(2026, 3, 1)} marked unpaid",
+        f"B-0-{date(2026, 3, 1)}",
+    ) in (found)
+
+
+def test_0014_gives_an_entry_whose_record_has_gone_its_events_words_and_no_document(database_at_0012):
+    db.prepare_database(nothing)
+    found = wording()
+    assert ("bill", 99, "bill_added", "Bill added", None) in found
+    assert ("bill", 99, "bill_deleted", "Bill deleted", None) in found
+    # A payment whose invoice-linked row exists, deleted: its document is the invoice's number, here none.
+    assert ("payment", 1, "payment_deleted", "Payment deleted", None) in found
+
+
+def test_0014_takes_an_invoices_number_for_its_entries_and_its_payments(tmp_path, monkeypatch):
+    monkeypatch.setenv("ACCOUNTABLE_DB", str(tmp_path / "numbered.db"))
+    db.dispose()
+    at_0012_with_records(tmp_path / "numbered.db")
+    with db.writing() as conn:
+        for invoice_id in conn.scalars(select(invoices.c.id)).all():
+            conn.execute(update(invoices).where(invoices.c.id == invoice_id).values(number=f"INV-{invoice_id:04d}"))
+    db.dispose()
+    db.prepare_database(nothing)
+    found = wording()
+    assert ("invoice", 1, "invoice_issued", "Invoice INV-0001 issued", "INV-0001") in found
+    assert ("invoice", 3, "invoice_voided", "Invoice INV-0003 voided", "INV-0003") in found
+    assert ("payment", 1, "payment_recorded", "Payment received on INV-0001", "INV-0001") in found
+    db.dispose()
+
+
+def test_0014_takes_the_same_number_of_queries_for_5_entries_as_for_50(tmp_path, monkeypatch):
+    totals = []
+    for count in (1, 10):
+        path = tmp_path / f"count-{count}.db"
+        monkeypatch.setenv("ACCOUNTABLE_DB", str(path))
+        db.dispose()
+        at_0011_with_records(path, count=count)
+        db._upgrade(path, "0012")
+        db.dispose()
+        totals.append(statements_to_upgrade(path))
+    assert totals[0] == totals[1]
+
+
+def test_the_fill_equals_what_posting_wrote_on_the_sample_data(database):
+    with db.writing() as conn:
+        cli.fill_sample(conn)
+    written = wording()
+    assert len(written) > 100
+    with db.writing() as conn:
+        conn.execute(update(journal_entries).values(description="", document=None))
+    assert wording() != written
+    with db.writing() as conn:
+        the_migration().fill(conn)
+    assert wording() == written
+
+
+def test_0014_makes_the_columns_and_the_index_and_has_one_head(database):
+    columns = live()["journal_entries"]["columns"]
+    assert columns["description"][1] is False
+    assert columns["document"][1] is True
+    assert live()["journal_lines"]["indexes"]["ix_journal_lines_account_entry"] == ("account", "entry_id")
+    config = Config()
+    config.set_main_option("script_location", str(db.MIGRATIONS))
+    assert ScriptDirectory.from_config(config).get_current_head() == "0014"
+
+
+def test_on_postgres_0014_adds_the_columns_and_the_index(postgres_sql):
+    assert "ALTER TABLE journal_entries ADD COLUMN description TEXT DEFAULT '' NOT NULL;" in postgres_sql
+    assert "ALTER TABLE journal_entries ADD COLUMN document TEXT;" in postgres_sql
+    assert "CREATE INDEX ix_journal_lines_account_entry ON journal_lines (account, entry_id)" in postgres_sql
+
+
+def invoice_rows() -> list[tuple]:
+    with db.reading() as conn:
+        return [
+            tuple(row)
+            for row in conn.execute(select(*(c for c in invoices.c if c.name != "quote_id")).order_by(invoices.c.id))
+        ]
+
+
+def test_0013_matches_the_invoices_table(database):
+    assert live()["invoices"]["indexes"]["ix_invoices_quote_id"] == ("quote_id",)
+    assert (("quote_id",), "quotes", None) in live()["invoices"]["foreign_keys"]
+    [index] = [i for i in inspect(db.engine()).get_indexes(invoices.name) if i["name"] == "ix_invoices_quote_id"]
+    assert index["unique"]
+
+
+def test_upgrading_leaves_every_invoice_as_it_was_with_no_quote(database_from_before_invoice_quotes):
+    with db.reading() as conn:
+        assert "quote_id" not in {c["name"] for c in inspect(conn).get_columns("invoices")}
+    before = invoice_rows()
+    db.dispose()
+
+    assert db.prepare_database(nothing) is False
+
+    assert before
+    assert invoice_rows() == before
+    with db.reading() as conn:
+        assert conn.scalars(select(invoices.c.quote_id)).all() == [None] * len(before)
+        assert conn.scalar(select(func.count()).select_from(quotes)) == 1
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+
+
+def test_after_the_upgrade_the_database_gives_a_quote_one_invoice(database_from_before_invoice_quotes):
+    db.prepare_database(nothing)
+    with db.writing() as conn:
+        quote, deal = conn.execute(select(quotes.c.id, quotes.c.deal_id)).one()
+        insert_row(conn, invoices, deal_id=deal, quote_id=quote, created_at=WHEN, updated_at=WHEN)
+        insert_row(conn, invoices, deal_id=deal, created_at=WHEN, updated_at=WHEN)
+        insert_row(conn, invoices, deal_id=deal, created_at=WHEN, updated_at=WHEN)
+    with pytest.raises(IntegrityError), db.writing() as conn:
+        insert_row(conn, invoices, deal_id=deal, quote_id=quote, created_at=WHEN, updated_at=WHEN)
+    with pytest.raises(IntegrityError), db.writing() as conn:
+        insert_row(conn, invoices, deal_id=deal, quote_id=9999, created_at=WHEN, updated_at=WHEN)
+
+
+def test_downgrading_takes_the_column_and_its_index_and_keeps_the_invoices(database_from_before_invoice_quotes):
+    db.prepare_database(nothing)
+    before = invoice_rows()
+    db.dispose()
+    engine = db._sqlite_engine(
+        db._sqlite_url(database_from_before_invoice_quotes), foreign_keys=False, autocommit=False
+    )
+    config = Config()
+    config.set_main_option("script_location", str(db.MIGRATIONS).replace("%", "%%"))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0012")
+    engine.dispose()
+
+    with db.reading() as conn:
+        assert "quote_id" not in {c["name"] for c in inspect(conn).get_columns("invoices")}
+        assert "ix_invoices_quote_id" not in {i["name"] for i in inspect(conn).get_indexes("invoices")}
+    assert invoice_rows() == before
+
+
+def test_on_postgres_an_invoice_has_a_quote_with_a_unique_index(postgres_sql):
+    assert "ADD COLUMN quote_id INTEGER" in postgres_sql
+    assert "FOREIGN KEY(quote_id) REFERENCES quotes (id)" in postgres_sql
+    assert "CREATE UNIQUE INDEX ix_invoices_quote_id ON invoices (quote_id)" in postgres_sql

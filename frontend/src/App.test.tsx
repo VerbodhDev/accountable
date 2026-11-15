@@ -2,7 +2,12 @@ import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { customersReply } from "./aging/test-aged";
+import { stops } from "./books/balance";
+import { balancesReply } from "./books/test-balance";
+import { pageReply } from "./books/profit/test-profit";
 import { cashFlowReply, quietMonths } from "./cashflow/test-cash-flow";
+import { todayIso } from "./lib/dates";
 import { THEME_KEY } from "./lib/theme";
 import { META, mockApi, startSignedIn, user, type Call } from "./test-utils";
 
@@ -553,6 +558,120 @@ describe("the app, signed in", () => {
     expect(topBar().getAllByRole("link")).toHaveLength(9);
     expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
     expect(await screen.findByLabelText("Company name")).toBeTruthy();
+  });
+
+  it("opens the Journal inside the top bar, with no section marked, as a real page", async () => {
+    mockApi({
+      "GET /meta": META,
+      "GET /me": ALEX,
+      "GET /books/entries?limit=100&offset=0": { total: 0, entries: [] },
+      "GET /books/entries?limit=1": { total: 0, entries: [] },
+    });
+    render(<App />);
+    visit("/accounting/journal");
+    expect((await heading()).textContent).toBe("Journal");
+    expect(await screen.findByText(/No entries yet/)).toBeTruthy();
+    expect(screen.queryByText("This report is coming soon.")).toBeNull();
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+    expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
+  });
+
+  it("opens Aged balances inside the top bar on Customers, with its report and no section marked", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX, "GET /aged-balances/customers": customersReply() });
+    render(<App />);
+    visit("/accounting/aged-balances");
+    expect((await heading()).textContent).toBe("Aged balances");
+    expect(screen.getByRole("radio", { name: "Customers" }).getAttribute("aria-checked")).toBe("true");
+    expect(await screen.findByRole("link", { name: "Bluebird Bakery" })).toBeTruthy();
+    expect(screen.queryByText("This report is coming soon.")).toBeNull();
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+    expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
+  });
+
+  it("opens an account's ledger at /accounting/accounts/cash, inside the top bar", async () => {
+    mockApi({
+      "GET /meta": META,
+      "GET /me": ALEX,
+      "GET /books/accounts/cash/ledger?limit=100&offset=0": {
+        key: "cash",
+        name: "Cash",
+        type: "asset",
+        balance_cents: "0",
+        total: 0,
+        last_entry_date: null,
+        lines: [],
+      },
+      "GET /books/months": { months: [] },
+    });
+    render(<App />);
+    visit("/accounting/accounts/cash");
+    expect((await heading()).textContent).toBe("Cash");
+    expect(await screen.findByText("No entries in this account yet.")).toBeTruthy();
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+    expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
+  });
+
+  it("says a ledger for a key that isn't an account no longer exists, with a link back to Journal", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX });
+    render(<App />);
+    visit("/accounting/accounts/bank");
+    expect((await heading()).textContent).toBe("This account no longer exists");
+    expect(screen.getByRole("link", { name: "Back to Journal" }).getAttribute("href")).toBe("/accounting/journal");
+  });
+
+  it("leaves the other addresses under /accounting/accounts as no longer existing", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX });
+    render(<App />);
+    visit("/accounting/accounts");
+    expect((await heading()).textContent).toBe("This page no longer exists");
+  });
+
+  it("opens Profit and loss at /accounting, replacing that address", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX, "GET /books/profit-and-loss?period=month": pageReply() });
+    render(<App />);
+    visit("/accounting");
+    expect((await heading()).textContent).toBe("Profit and loss");
+    expect(window.location.pathname).toBe("/accounting/profit-and-loss");
+  });
+
+  it("opens the real Profit and loss page at its address, inside the top bar, with no section marked", async () => {
+    const calls = mockApi({
+      "GET /meta": META,
+      "GET /me": ALEX,
+      "GET /books/profit-and-loss?period=month": pageReply(),
+    });
+    render(<App />);
+    visit("/accounting/profit-and-loss");
+    expect((await heading()).textContent).toBe("Profit and loss");
+    expect(await screen.findByRole("region", { name: "Statement" })).toBeTruthy();
+    expect(screen.queryByText("This report is coming soon.")).toBeNull();
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+    expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
+    expect(calls.some((call) => call.path.startsWith("/books/profit-and-loss"))).toBe(true);
+  });
+
+  it("says an address under /accounting that isn't a page no longer exists, keeping the top bar", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX });
+    render(<App />);
+    visit("/accounting/trial-balance");
+    expect((await heading()).textContent).toBe("This page no longer exists");
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+  });
+
+  it("gets the menu's Accounting links from App.tsx, and opens a page from one", async () => {
+    const days = stops(todayIso()).map((stop) => [`GET /books/balances?on=${stop.day}`, balancesReply(stop.day)]);
+    mockApi({ "GET /meta": META, "GET /me": ALEX, ...Object.fromEntries(days) });
+    render(<App />);
+    visit("/");
+    await heading();
+    const clicks = user();
+    await clicks.click(await screen.findByRole("button", { name: "Menu for Alex Rivera" }));
+
+    await clicks.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Balance sheet" }));
+
+    expect((await heading()).textContent).toBe("Balance sheet");
+    expect(window.location.pathname).toBe("/accounting/balance-sheet");
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("goes to a section from the top bar", async () => {

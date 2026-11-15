@@ -1,10 +1,16 @@
 import { FileText, Package, Receipt, ReceiptText } from "lucide-react";
 import { useEffect } from "react";
-import { createBrowserRouter } from "react-router";
+import { Navigate, createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 
 import { BillsPanel } from "./bills/BillsPanel";
 import { BillsMoney } from "./bills/charts/MoneySection";
+import { ACCOUNTING_LINKS } from "./books/links";
+import { AgedBalances } from "./aging/AgedBalances";
+import { BalanceSheet } from "./books/pages/BalanceSheet";
+import { Journal } from "./books/pages/Journal";
+import { LedgerPage } from "./books/pages/Ledger";
+import { ProfitAndLoss } from "./books/pages/ProfitAndLoss";
 import { CashFlowRow } from "./cashflow/CashFlowRow";
 import { Bill } from "./bills/pages/Bill";
 import { Bills } from "./bills/pages/Bills";
@@ -28,6 +34,7 @@ import { useMeta, type DealDetail, type OrganizationDetail } from "./crm/queries
 import { crmSearchGroups } from "./crm/searchGroups";
 import { SampleInvoice } from "./invoices/SampleInvoice";
 import { InvoicesMoney } from "./invoices/MoneySection";
+import { QuoteInvoiceButton, QuoteInvoiceLine } from "./invoices/QuoteInvoice";
 import { Invoice } from "./invoices/pages/Invoice";
 import { Invoices } from "./invoices/pages/Invoices";
 import { DealInvoices, OrganizationInvoices } from "./invoices/panels";
@@ -97,9 +104,12 @@ function Money() {
 
 const DASHBOARD_SECTIONS: DashboardSection[] = [{ name: "money", Section: Money }];
 
+// Each group of links in the user's menu, after the themes.
+const MENU_LINKS = [ACCOUNTING_LINKS];
+
 function AppShell() {
   useMeta(); // Fetched early, because it never changes and forms need it straight away.
-  return <Shell sections={SECTIONS} search={<Search groups={SEARCH_GROUPS} />} />;
+  return <Shell sections={SECTIONS} search={<Search groups={SEARCH_GROUPS} />} menuLinks={MENU_LINKS} />;
 }
 
 const router = createBrowserRouter([
@@ -118,11 +128,17 @@ const router = createBrowserRouter([
       { path: "/products/:id", element: <Product /> },
       { path: "/quotes", element: <Quotes /> },
       { path: "/quotes/new", element: <NewDraft /> },
-      { path: "/quotes/:id", element: <Quote /> },
+      { path: "/quotes/:id", element: <Quote invoice={{ Button: QuoteInvoiceButton, Line: QuoteInvoiceLine }} /> },
       { path: "/invoices", element: <Invoices /> },
       { path: "/invoices/:id", element: <Invoice /> },
       { path: "/bills", element: <Bills /> },
       { path: "/bills/:id", element: <Bill /> },
+      { path: "/accounting", element: <Navigate to="/accounting/profit-and-loss" replace /> },
+      { path: "/accounting/profit-and-loss", element: <ProfitAndLoss /> },
+      { path: "/accounting/balance-sheet", element: <BalanceSheet /> },
+      { path: "/accounting/journal", element: <Journal /> },
+      { path: "/accounting/aged-balances", element: <AgedBalances /> },
+      { path: "/accounting/accounts/:key", element: <LedgerPage /> },
       { path: "/settings", element: <SettingsPage preview={SampleInvoice} /> },
       { path: "*", element: <MissingRecord word="page" to="/" section="Dashboard" /> },
     ],
