@@ -67,14 +67,69 @@ git checkout -b multi-user
 
 ### Set up Supabase
 
-Supabase holds the database and the sign-in. Its free plan is enough.
+Supabase holds the database and the sign-in. The course uses a hosted free project. This copy runs Supabase locally in Docker, so the database and sign-in stay on this computer.
+
+Docker must be running before the commands below. The Docker disk needs free space. If the database logs "No space left on device", remove unused images with `docker image prune -a` and start the stack again.
+
+#### Local stack
+
+1. In the `accountable` folder, create the local project once, if `supabase/config.toml` is not there yet:
+
+```
+npx -y supabase@latest init --yes
+```
+
+That writes `supabase/config.toml`. Git already ignores `supabase/.temp/` and `supabase/.branches/`.
+
+2. Start the stack. The first start downloads the images and can take several minutes:
+
+```
+npx -y supabase@latest start --yes
+```
+
+When it is up, these addresses answer:
+
+- API: `http://127.0.0.1:54321`
+- Database: `127.0.0.1:54322`, database name `postgres`
+- Studio: `http://127.0.0.1:54323`
+- Mail: `http://127.0.0.1:54324`
+- MCP: `http://127.0.0.1:54321/mcp`
+
+3. Read the local settings. The output includes the publishable key, so leave it on this computer:
+
+```
+npx -y supabase@latest status -o env
+```
+
+4. Open Studio at `http://127.0.0.1:54323`. In **Authentication**, open **Users**, click **Add user** and then **Create new user**. Enter your email and a password, leave **Auto confirm user?** ticked and click **Create user**. Then open **Sign In / Providers**, turn off **Allow new users to sign up** and click **Save changes**.
+5. Write `.env` in the `accountable` folder yourself. The agent's hook stops it from touching `.env`. Git ignores the file. Use the three names below. Do not use the `VITE_` names that Studio or the status output may show. The local database user is `postgres` and the password is `postgres`. Copy the publishable key from the status output. It starts with `sb_publishable_`.
+
+```
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_your-key
+```
+
+6. Check the file:
+
+```
+uv run course/check_supabase.py
+```
+
+The script was written for a hosted project. On this local stack it accepts a key that starts with `sb_publishable_`. It then reports two FIX lines: `DATABASE_URL` is not a `pooler.supabase.com` address on port 5432, and `SUPABASE_URL` is not an `https://….supabase.co` address. Those two lines are expected here. The script does not print the password or the key.
+
+Stop the stack later with `npx -y supabase@latest stop`.
+
+#### Hosted project
+
+Use these steps only for a Supabase project on the web. Its free plan is enough.
 
 1. Sign up at https://supabase.com and create a new project. Use only letters and numbers in the database password, since symbols such as `@` and `#` break the connection string. Save the password. Pick the region nearest you. I chose East US (North Virginia). Leave the **Security options** as they are.
 2. Click **Connect** at the top of the project, choose **Session pooler** and copy the connection string. Put your database password in place of `[YOUR-PASSWORD]`, square brackets included.
 3. In the same **Connect** dialog, choose your framework under **App Frameworks** to see the **Project URL** and the **publishable key**, starting `sb_publishable_`, and copy both. The key is also in **Settings**, under **API Keys**. Copy only the values. The names the dialog puts in front of them, such as `VITE_SUPABASE_URL`, aren't the ones `.env` uses.
 4. In **Authentication**, open **Users**, click **Add user** and then **Create new user**. Enter your email and a password, leave **Auto confirm user?** ticked and click **Create user**.
 5. Turn off sign-ups, so that nobody else can make an account: in **Authentication**, open **Sign In / Providers** and turn off **Allow new users to sign up**. Click **Save changes**.
-6. Create a file called `.env` in the `accountable` folder with these three lines, using your own values. Your agent's hook stops it from touching `.env`, so you write this file yourself. Git ignores it.
+6. Create `.env` with the hosted values, under the same three names:
 
 ```
 DATABASE_URL=postgresql://postgres.abcdefghijklmnopqrst:your-database-password@aws-1-us-east-1.pooler.supabase.com:5432/postgres
@@ -82,28 +137,43 @@ SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_your-key
 ```
 
-7. Check your `.env` with this script. It tests the three settings, connects to the database and makes sure sign-ups are off. It doesn't print your password or key.
-
-```
-uv run course/check_supabase.py
-```
-
-It ends with "All good. Your .env is ready." or lists what to fix.
+7. Run `uv run course/check_supabase.py`. For a hosted project it connects to the database and checks that sign-ups are off. It ends with "All good. Your .env is ready." or lists what to fix.
 
 ### Connect your agent to Supabase, read-only
 
-Supabase's MCP server lets your agent look at your project. Connect it read-only and to this one project, so your agent can read the database but can't change it. Changes to the database go through the app's migrations, which are in git.
+Supabase's MCP server lets your agent look at the database. Connect it read-only, so the agent can read but the database role refuses writes. Changes to the database go through the app's migrations, which are in git.
 
-1. Find your project's ref, the part of `SUPABASE_URL` before `.supabase.co`.
-2. In the terminal, in the `accountable` folder, run this with your own ref in place of `abcdefghijklmnopqrst`. Claude Code keeps the server for this folder on your computer only, so your project ref stays out of git.
+#### Local MCP
+
+The local stack serves MCP on the same API. No browser sign-in. In the `accountable` folder:
+
+```
+claude mcp add --transport http --scope local supabase "http://127.0.0.1:54321/mcp?read_only=true"
+```
+
+Claude Code keeps that server in its local config for this folder. Restart Claude Code (`/exit`, then `claude`). Type `/mcp` and choose **supabase**. It should show connected. There is no **Authenticate** step for the local server.
+
+For Grok, from the same folder:
+
+```
+grok mcp add --transport http --scope project supabase "http://127.0.0.1:54321/mcp?read_only=true"
+```
+
+That writes the address into `.grok/config.toml`. A new Grok session loads it. The address includes `read_only=true`. Supabase documents that flag as running SQL as a read-only database role. The local server still lists `execute_sql` among its tools.
+
+The local stack must be running before the agent calls the server. If the API on port 54321 is down, start it again with `npx -y supabase@latest start --yes`.
+
+#### Hosted MCP
+
+For a hosted project, find the project's ref, the part of `SUPABASE_URL` before `.supabase.co`. In the `accountable` folder, run this with your own ref in place of `abcdefghijklmnopqrst`. Claude Code keeps the server for this folder on your computer only, so the ref stays out of git.
 
 ```
 claude mcp add --transport http supabase "https://mcp.supabase.com/mcp?project_ref=abcdefghijklmnopqrst&read_only=true"
 ```
 
-3. Restart Claude Code (`/exit`, then `claude`). Type `/mcp`, choose **supabase**, then **Authenticate**, and sign in to Supabase in the browser.
+Restart Claude Code (`/exit`, then `claude`). Type `/mcp`, choose **supabase**, then **Authenticate**, and sign in to Supabase in the browser.
 
-With another coding agent, use the same address. Supabase's guide shows how to add it to each one: https://supabase.com/docs/guides/getting-started/mcp
+Supabase's guide shows how to add the hosted server to other agents: https://supabase.com/docs/guides/getting-started/mcp
 
 ### Plan
 
