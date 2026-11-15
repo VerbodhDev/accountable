@@ -20,6 +20,7 @@ Part of the [spec](../spec.md), which has the summary, the terms, the quality ru
 
 - The browser holds only the Supabase URL and the publishable key. The database password, inside `DATABASE_URL`, stays on the server.
 - The three settings live in `.env` on this computer and in Render's own settings for the shared app. `.env` stays out of git, `render.yaml` names the settings without their values, and gitleaks allows a key in `.env` and nowhere else. CI uses no secrets.
+- `CLAUDE_CODE_OAUTH_TOKEN` is the Copilot's token ([Z9](copilot.md#copilot)). The backend is the only part that reads it. The browser never receives it, a reply never includes it, and a log never prints it. It lives in `.env` and in Render's settings. `render.yaml` names it without a value. A missing token does not stop the app: the panel says so (Z10).
 - The company settings ([B1](settings.md#company-settings)) are the team's data, not keys or configuration. They hold no secrets, live in the database with the records, and are never read from `.env`.
 - The app never uses Supabase's secret key. The backend reaches the database through `DATABASE_URL`, and checks tokens with the public keys.
 
