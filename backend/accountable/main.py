@@ -42,7 +42,7 @@ from accountable.copilot.router import router as copilot_router
 from accountable.crm import cash as crm_cash
 from accountable.crm import schemas as crm_schemas
 from accountable.crm import search as crm_search
-from accountable.crm.routers import activities, contacts, dashboard, deals, meta, organizations
+from accountable.crm.routers import activities, contacts, dashboard, deals, imports, meta, organizations
 from accountable.holds import Hold
 from accountable.invoices import cash as invoices_cash
 from accountable.invoices import labels as invoices_labels
@@ -93,7 +93,15 @@ class Area:
 # Every area, in the order the top bar's search shows its results. A later area joins the end.
 AREAS = [
     Area(
-        routers=[meta.router, organizations.router, contacts.router, deals.router, activities.router, dashboard.router],
+        routers=[
+            meta.router,
+            organizations.router,
+            contacts.router,
+            deals.router,
+            activities.router,
+            dashboard.router,
+            imports.router,
+        ],
         messages=crm_schemas.FIELD_MESSAGES,
         kinds=crm_search.KINDS,
         cash=crm_cash.CASH,
