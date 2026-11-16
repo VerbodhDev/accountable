@@ -98,7 +98,7 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | `POST /imports/contacts` | The same body. |
 | `POST /imports/deals` | The same body. |
 
-Every reply has `counts` (`new`, `existing`, `rejected`, for contacts `companies_to_add`, and for deals `companies_to_add` and `contacts_to_add`), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `detail` holding the message. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
+Every reply has `counts` (`new`, `existing`, `rejected`, for contacts `companies_to_add`, and for deals `companies_to_add` and `contacts_to_add`), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `fields` holding the message under `csv`, like every other refused request. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
 
 ## The screen
 
