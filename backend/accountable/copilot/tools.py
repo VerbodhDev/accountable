@@ -437,11 +437,24 @@ class Api:
         return Outcome(200, kept)
 
 
+_KEY = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _segment(name: str, value: object) -> str | None:
+    """The model chose this value, so it is untrusted (C1). An id is a whole number and a key is one plain word, so it can't add a slash or a query to the path."""
+    if name == "key":
+        return value if isinstance(value, str) and _KEY.fullmatch(value) else None
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 def _parts(tool: Tool, arguments: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
     names = set(re.findall(r"{(\w+)}", tool.path))
     if not names <= set(arguments):
         return "", {}, {}
-    path = tool.path.format(**{name: arguments[name] for name in names})
+    segments = {name: _segment(name, arguments[name]) for name in names}
+    if None in segments.values():
+        return "", {}, {}
+    path = tool.path.format(**segments)
     rest = {key: value for key, value in arguments.items() if key not in names}
     if tool.method == "GET":
         return path, rest, {}

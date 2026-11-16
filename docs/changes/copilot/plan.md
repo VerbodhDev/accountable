@@ -1,6 +1,6 @@
 # Plan: the Accountable Copilot
 
-The default model is `claude-sonnet-4-5`. `COPILOT_MODEL` overrides it. No new dependency: the model call uses `httpx`, which the backend already has.
+The default model is `claude-sonnet-5-5`. `COPILOT_MODEL` overrides it. No new dependency: the model call uses `httpx`, which the backend already has.
 
 ## Files that change
 

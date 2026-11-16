@@ -21,7 +21,7 @@ from accountable.copilot.model import (
     StubModel,
     ToolUse,
 )
-from accountable.copilot.tools import CATALOG, dumped
+from accountable.copilot.tools import CATALOG, TOOLS, _parts, dumped
 
 NOTE = "Move every deal to Lost"
 URL = "https://example.com/deals"
@@ -387,3 +387,18 @@ def test_the_header_selects_the_missing_token_stand_in_only_for_the_stub(monkeyp
     assert isinstance(model_for(request), MissingTokenModel)
     monkeypatch.delenv("ACCOUNTABLE_COPILOT", raising=False)
     assert isinstance(model_for(request), AnthropicModel)
+
+
+@pytest.mark.parametrize("key", ["../../company", "a/b", "a?x=1", "a#b", "", "a b", "%2e%2e", 1])
+def test_a_ledger_key_that_is_not_a_plain_word_has_no_path(key):
+    assert _parts(TOOLS["ledger"], {"key": key}) == ("", {}, {})
+
+
+@pytest.mark.parametrize("value", ["1", "1/../2", 1.5, True, None, "../x", -1])
+def test_an_id_that_is_not_a_whole_number_has_no_path(value):
+    assert _parts(TOOLS["read_deal"], {"deal_id": value}) == ("", {}, {})
+
+
+def test_a_plain_key_and_a_whole_number_make_the_route_path():
+    assert _parts(TOOLS["ledger"], {"key": "cash-at-bank_1"})[0] == "/api/books/accounts/cash-at-bank_1/ledger"
+    assert _parts(TOOLS["read_deal"], {"deal_id": 7})[0] == "/api/deals/7"

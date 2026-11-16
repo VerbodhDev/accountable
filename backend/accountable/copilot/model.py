@@ -4,14 +4,17 @@ The token is read here and sent only on this request. Nothing in this module log
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
 
+log = logging.getLogger(__name__)
+
 URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = "claude-sonnet-4-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 TOKEN_NAME = "CLAUDE_CODE_OAUTH_TOKEN"
 NEED_TOKEN = "The Copilot needs a token."
 LIMIT = "The limit was reached."
@@ -107,13 +110,24 @@ async def _post(
 ) -> Completion:
     try:
         response = await client.post(URL, headers=_headers(), json=_payload(messages, tools, system))
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        log.warning("The Copilot's call to Anthropic failed: %s", type(error).__name__)
         raise ModelError(FAILURE) from None
     if response.status_code == 429:
         raise ModelError(LIMIT)
     if response.status_code >= 400:
+        log.warning("Anthropic refused the Copilot's call: %s %s", response.status_code, _error_type(response))
         raise ModelError(FAILURE)
     return _completion(response.json())
+
+
+def _error_type(response: httpx.Response) -> str:
+    """The error's type and message from Anthropic's reply. The reply never holds our token."""
+    try:
+        error = response.json().get("error", {})
+        return f"{error.get('type')}: {str(error.get('message'))[:200]}"
+    except (ValueError, AttributeError):
+        return "unreadable reply"
 
 
 def _completion(payload: object) -> Completion:

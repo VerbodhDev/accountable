@@ -75,13 +75,15 @@ function headersFor(token: string | null, body: unknown): Record<string, string>
   };
 }
 
+const CLOUD_HOST = "d3lzszqmcqjrkz.cloudfront.net";
+
 /**
- * A page served from this computer uses a relative API path. The CloudFront page is
- * another site, so its calls go to the backend on this computer.
+ * The CloudFront page is another site, so its calls go to the backend on this computer.
+ * Every other host, this computer's own pages and the shared app, uses a relative path,
+ * so a token never goes to an address the page was not built for.
  */
 export function apiRoot(host = typeof location === "undefined" ? "" : location.host): string {
-  if (host.startsWith("127.0.0.1") || host.startsWith("localhost")) return "";
-  return "http://127.0.0.1:8000";
+  return host === CLOUD_HOST ? "http://127.0.0.1:8000" : "";
 }
 
 async function send(path: string, { method = "GET", body, signal }: Options): Promise<Response> {

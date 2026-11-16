@@ -230,14 +230,15 @@ async function tabThrough(page: Page, presses: number) {
 test("every control can be reached by Tab and shows a focus ring", async ({ page }) => {
   await page.goto("/organizations");
   await expect(page.locator("tbody tr").first()).toBeVisible();
-  // Past the nine sections, the search box, the menu, Add, the table's search and its headings.
-  const table = await tabThrough(page, 24);
+  // Past the nine sections, the search box, Copilot, the menu, Add, the table's search and its headings.
+  const table = await tabThrough(page, 25);
   for (const name of [
     "A Dashboard",
     "A Deals",
     "A Products",
     "A Bills",
     "INPUT Search organizations, contacts, deals and products",
+    "BUTTON Copilot",
     `BUTTON Menu for ${SIGNED_IN.name}`,
     "BUTTON Add organization",
     "INPUT Search organizations",

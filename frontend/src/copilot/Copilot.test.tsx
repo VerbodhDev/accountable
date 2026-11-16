@@ -117,6 +117,16 @@ describe("the Copilot panel", () => {
     await waitFor(() => expect(calls.map((call) => call.path)).toContain("/copilot/cancel"));
   });
 
+  it("puts focus back in the box after an answer, so Escape still closes the panel", async () => {
+    await ask("Which deals close this month?");
+    await screen.findByText(ANSWER);
+    const box = screen.getByRole("textbox", { name: "Ask about your records" });
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    await user().keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Copilot" }));
+  });
+
   it("keeps the conversation while the panel is closed, and a new mount starts empty", async () => {
     const button = open();
     await user().click(button);

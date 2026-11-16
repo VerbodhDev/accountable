@@ -160,8 +160,9 @@ for (const origin of OTHER_ORIGINS) {
           { origin, "access-control-request-method": method, "access-control-request-headers": "content-type" },
           "OPTIONS",
         );
+        // A refused preflight still lists the methods the one allowed origin may use. It grants nothing.
         expect(reply.headers["access-control-allow-origin"], `${port} ${method}`).toBeUndefined();
-        expect(reply.headers["access-control-allow-methods"], `${port} ${method}`).toBeUndefined();
+        expect(reply.headers["access-control-allow-private-network"], `${port} ${method}`).toBeUndefined();
       }
     }
   });

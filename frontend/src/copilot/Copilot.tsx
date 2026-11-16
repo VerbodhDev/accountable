@@ -53,7 +53,7 @@ export function Copilot() {
     if (!open) return;
     if (waiting) confirmButton.current?.focus();
     else box.current?.focus();
-  }, [open, waiting]);
+  }, [open, waiting, working]);
 
   useEffect(() => {
     if (!open) return;
