@@ -354,8 +354,20 @@ class RejectedRow(BaseModel):
     reason: str
 
 
+class ShownDeal(BaseModel):
+    """A new deal the preview lists: its stage, and its amount as written beside the whole dollars it becomes (I15, I24)."""
+
+    row: int
+    name: str
+    stage: str
+    value: int
+    amount: str
+    rounded: bool
+
+
 class ImportReply(BaseModel):
     counts: ImportCounts
+    deals: list[ShownDeal]
     rejected: list[RejectedRow]
     rejected_more: int
     ignored_columns: list[str]

@@ -3,12 +3,16 @@ import { Link } from "react-router";
 
 import { PageHeader } from "../components/PageHeader";
 import { ApiError } from "../lib/api";
+import { money } from "../lib/money";
 import { listed, plural } from "../lib/words";
 import { usePreview, useSaveImport, type ImportKind, type ImportReply } from "./queries";
 
 /** The page's own size check (I17). The backend checks again, because a request can skip the page. */
 const MAX_BYTES = 2 * 1024 * 1024;
 const TOO_LARGE = "This file is too large. Split it into files of 2,000 rows or fewer.";
+// What the backend says for a body over its 2 MB limit (main.py, TOO_BIG). On this page it means the file is too large (I18).
+const BODY_TOO_BIG = "That's too big to send.";
+const CANNOT_READ = "This file could not be read.";
 const IGNORED_SHOWN = 6;
 
 const KINDS: { value: ImportKind; label: string; noun: string; list: { to: string; label: string } }[] = [
@@ -76,11 +80,55 @@ function Figure({ label, value }: { label: string; value: number }) {
   );
 }
 
+function NewDeals({ reply }: { reply: ImportReply }) {
+  const more = reply.counts.new - reply.deals.length;
+  return (
+    <>
+      <table className="w-full text-left text-[14px] leading-5">
+        <caption className="sr-only">New deals</caption>
+        <thead>
+          <tr className="text-[13px] leading-[18px] text-muted">
+            <th scope="col" className="w-16 py-1 pr-3 font-semibold">
+              Row
+            </th>
+            <th scope="col" className="py-1 pr-3 font-semibold">
+              Deal
+            </th>
+            <th scope="col" className="py-1 pr-3 font-semibold">
+              Stage
+            </th>
+            <th scope="col" className="py-1 font-semibold">
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {reply.deals.map((deal) => (
+            <tr key={deal.row}>
+              <td className="num py-1 pr-3">{deal.row}</td>
+              <td className="min-w-0 py-1 pr-3 break-words">{deal.name}</td>
+              <td className="py-1 pr-3">{deal.stage}</td>
+              <td className="num py-1">
+                {money(deal.value)}
+                {deal.rounded && <span className="text-muted"> (rounded from {deal.amount})</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {more > 0 && <p className="text-muted">and {more} more new deals</p>}
+    </>
+  );
+}
+
 function Preview({ reply, kind }: { reply: ImportReply; kind: ImportKind }) {
   const { counts } = reply;
   const ignored = ignoredLine(reply.ignored_columns);
   return (
     <div className="flex flex-col gap-3">
+      <p role="status" className="sr-only">
+        Preview ready: {counts.new} new, {counts.existing} already there, {counts.rejected} rejected
+      </p>
       <dl
         aria-label="What the file holds"
         role="group"
@@ -93,6 +141,7 @@ function Preview({ reply, kind }: { reply: ImportReply; kind: ImportKind }) {
         <Figure label="Rejected" value={counts.rejected} />
       </dl>
       {ignored && <p className="text-[13px] leading-[18px] text-muted">{ignored}</p>}
+      {kind === "deals" && reply.deals.length > 0 && <NewDeals reply={reply} />}
       {reply.rejected.length > 0 && (
         <table className="w-full text-left text-[14px] leading-5">
           <caption className="sr-only">Rejected rows</caption>
@@ -130,12 +179,15 @@ export function ImportPage() {
   const [view, setView] = useState<View>({ step: "empty" });
   const picker = useRef<HTMLInputElement>(null);
   const latest = useRef(0);
+  // The kind as it is now, for a file that finishes reading after the kind was changed.
+  const kindNow = useRef<ImportKind>("companies");
   // A button only disables once the page redraws, which a quick second press can beat (F10).
   const saving = useRef(false);
 
   function failure(error: unknown): View {
     if (error instanceof ApiError && error.kind === "fields")
       return { step: "refused", message: error.fields.csv ?? error.message };
+    if (error instanceof ApiError && error.message === BODY_TOO_BIG) return { step: "refused", message: TOO_LARGE };
     return { step: "failed", message: error instanceof Error ? error.message : "Something went wrong." };
   }
 
@@ -160,12 +212,21 @@ export function ImportPage() {
       setView({ step: "refused", message: TOO_LARGE });
       return;
     }
-    const text = await readText(file);
+    let text: string;
+    try {
+      text = await readText(file);
+    } catch {
+      setChosen(null);
+      setView({ step: "refused", message: CANNOT_READ });
+      return;
+    }
     setChosen({ name: file.name, text });
-    await runPreview(kind, text);
+    await runPreview(kindNow.current, text);
   }
 
   function changeKind(next: ImportKind) {
+    if (saving.current) return;
+    kindNow.current = next;
     setKind(next);
     if (chosen) void runPreview(next, chosen.text);
     else setView({ step: "empty" });
@@ -215,6 +276,7 @@ export function ImportPage() {
                     value={entry.value}
                     checked={kind === entry.value}
                     onChange={() => changeKind(entry.value)}
+                    disabled={view.step === "saving"}
                     className="size-4 accent-sea-green"
                   />
                   {entry.label}
@@ -238,13 +300,22 @@ export function ImportPage() {
               className="sr-only"
               onChange={(event) => void chooseFile(event)}
             />
-            <button type="button" className="btn btn-secondary" onClick={() => picker.current?.click()}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={view.step === "saving"}
+              onClick={() => picker.current?.click()}
+            >
               Choose file
             </button>
             {chosen && <span className="min-w-0 truncate text-muted">{chosen.name}</span>}
           </div>
-          <div aria-live="polite" className="flex flex-col gap-3">
-            {view.step === "reading" && <p className="text-muted">Reading the file</p>}
+          <div className="flex flex-col gap-3">
+            {view.step === "reading" && (
+              <p role="status" className="text-muted">
+                Reading the file
+              </p>
+            )}
             {previewing && <Preview reply={view.reply} kind={kind} />}
             {(view.step === "refused" || view.step === "failed") && (
               <p role="alert" className="text-raspberry-text">
@@ -253,7 +324,7 @@ export function ImportPage() {
             )}
             {view.step === "done" && (
               <div className="flex flex-col gap-3">
-                <p>{addedMessage(view.kind, view.reply)}</p>
+                <p role="status">{addedMessage(view.kind, view.reply)}</p>
                 <p>
                   <Link to={KINDS.find((entry) => entry.value === view.kind)!.list.to} className="underline">
                     {KINDS.find((entry) => entry.value === view.kind)!.list.label}

@@ -1,5 +1,6 @@
 """Reading a HubSpot export: the columns, the limits and the maps. No database here."""
 
+import time
 from datetime import date
 
 import pytest
@@ -233,6 +234,8 @@ def test_a_deal_is_read_into_its_fields():
         "name": "Spring wedding",
         "stage": "negotiation",
         "value": 12000,
+        "amount": "12000.0",
+        "rounded": False,
         "close_date": date(2026, 12, 1),
         "company": "Marigold Kitchens",
         "contact_name": "Asha Reed",
@@ -357,6 +360,55 @@ def test_the_main_contact_is_the_name_and_the_email_ending_the_cell(cell, name, 
 )
 def test_a_contact_cell_without_an_email_or_a_name_is_rejected(cell, reason):
     assert hubspot.deal_fields(a_deal(**{"Associated Contact": cell}), TODAY).reason == reason
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        "a" + " " * 100_000 + "x",
+        "(" * 100_000,
+        "a (" + "b@" * 50_000,
+        "a" + "( " * 50_000 + "b@c)",
+        "x" * 100_000 + " (a@b.example)",
+    ],
+)
+def test_a_hostile_contact_cell_is_answered_at_once_and_rejected(cell):
+    started = time.perf_counter()
+    parsed = hubspot.deal_fields(a_deal(**{"Associated Contact": cell}), TODAY)
+    assert time.perf_counter() - started < 0.5
+    assert parsed.reason == "The contact cell is too long"
+
+
+def test_a_contact_cell_of_500_characters_is_read_and_one_of_501_is_too_long():
+    name = "n" * 476
+    cell = f"{name} (asha@marigold.example)"
+    assert len(cell) == 500
+    assert hubspot.deal_fields(a_deal(**{"Associated Contact": cell}), TODAY).reason is None
+    assert (
+        hubspot.deal_fields(a_deal(**{"Associated Contact": "n" + cell}), TODAY).reason
+        == "The contact cell is too long"
+    )
+
+
+@pytest.mark.parametrize(
+    "amount, original, rounded",
+    [("1000.5", "1000.5", True), ("1000.0", "1000.0", False), ("2500", "2500", False), ("1000.49", "1000.49", True)],
+)
+def test_a_deal_keeps_its_amount_as_written_and_says_whether_it_was_rounded(amount, original, rounded):
+    fields = hubspot.deal_fields(a_deal(Amount=amount), TODAY).fields
+    assert (fields["amount"], fields["rounded"]) == (original, rounded)
+
+
+@pytest.mark.parametrize(
+    "close", ["2026-11-16junk", "20261116", "2026-W46-1", "2026-11-16 later", "2026-11-1", "x2026-11-16"]
+)
+def test_a_close_date_must_be_a_date_with_at_most_a_time_after_it(close):
+    assert hubspot.deal_fields(a_deal(**{"Close Date": close}), TODAY).reason == "Close Date is not a date"
+
+
+@pytest.mark.parametrize("close", ["2026-12-01T09:30:15Z", "2026-12-01 09:30", "2026-12-01 09:30:15", "2026-12-01"])
+def test_a_close_date_with_a_time_in_any_usual_shape_is_read(close):
+    assert hubspot.deal_fields(a_deal(**{"Close Date": close}), TODAY).fields["close_date"] == date(2026, 12, 1)
 
 
 def test_the_first_check_that_fails_is_the_reason_shown():

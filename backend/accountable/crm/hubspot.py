@@ -71,7 +71,11 @@ CLOSED_STAGES = ("won", "lost")
 
 # Beyond any deal's value, so the schema's own limit rejects it with its own message.
 AMOUNT_CAP = Decimal(10**13)
-CONTACT_CELL = re.compile(r"^(?P<name>.*?)\s*\(\s*(?P<email>[^()\s]+@[^()\s]+)\s*\)\s*$")
+# A date, and after it, if there is anything, a time that starts with hours and minutes.
+DATE_AND_TIME = re.compile(r"(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2}.*)?", re.DOTALL)
+MAX_CONTACT_CELL = 500
+# What may stand between the last pair of brackets of the Associated Contact cell: an address, and nothing else.
+EMAIL_IN_BRACKETS = re.compile(r"[^()\s]+@[^()\s]+")
 
 
 class Refused(Exception):
@@ -215,8 +219,11 @@ def _close_date(text: str) -> date | str:
     """The date as written, without the time, or the reason it cannot be read."""
     if not text:
         return "No close date"
+    found = DATE_AND_TIME.fullmatch(text)
+    if found is None:
+        return "Close Date is not a date"
     try:
-        return date.fromisoformat(text[:10])
+        return date.fromisoformat(found[1])
     except ValueError:
         return "Close Date is not a date"
 
@@ -238,6 +245,21 @@ def _contact_count(text: str) -> str | None:
     return None
 
 
+def _contact_cell(cell: str) -> tuple[str, str] | None:
+    """The name and the email of "Name (email)", read from the last bracket, or None when there is no email.
+
+    A name can hold brackets too, so only the last pair counts. This looks for characters one time each, so a
+    hostile cell cannot make it slow the way a pattern with a lazy prefix and optional spaces can.
+    """
+    if not cell.endswith(")"):
+        return None
+    opening = cell.rfind("(")
+    email = cell[opening + 1 : -1].strip()
+    if not EMAIL_IN_BRACKETS.fullmatch(email):
+        return None
+    return cell[:opening].strip(), email
+
+
 def deal_fields(cells: dict[str, str], today: date) -> Parsed:
     """The first check that fails is the reason, in the order of the spec's table (I13)."""
     name = cells.get("Deal Name", "").strip()
@@ -247,7 +269,8 @@ def deal_fields(cells: dict[str, str], today: date) -> Parsed:
     stage = DEAL_STAGES.get(label.casefold())
     if stage is None:
         return reject(f'Stage "{label}" is not one of the seven HubSpot deal stages')
-    value = _amount(cells.get("Amount", "").strip())
+    amount = cells.get("Amount", "").strip()
+    value = _amount(amount)
     if isinstance(value, str):
         return reject(value)
     close_date = _close_date(cells.get("Close Date", "").strip())
@@ -261,19 +284,24 @@ def deal_fields(cells: dict[str, str], today: date) -> Parsed:
     problem = _contact_count(cells.get("Number of Associated Contacts", "").strip())
     if problem:
         return reject(problem)
-    found = CONTACT_CELL.match(cells.get("Associated Contact", "").strip())
+    cell = cells.get("Associated Contact", "").strip()
+    if len(cell) > MAX_CONTACT_CELL:
+        return reject("The contact cell is too long")
+    found = _contact_cell(cell)
     if found is None:
         return reject("The contact has no email, so it cannot be matched")
-    if not found["name"]:
+    if not found[0]:
         return reject("The contact has no name")
     return Parsed(
         {
             "name": name,
             "stage": stage,
             "value": value,
+            "amount": amount,
+            "rounded": Decimal(amount) != value,
             "close_date": close_date,
             "company": company,
-            "contact_name": found["name"],
-            "contact_email": found["email"],
+            "contact_name": found[0],
+            "contact_email": found[1],
         }
     )

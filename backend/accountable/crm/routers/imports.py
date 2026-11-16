@@ -42,6 +42,7 @@ def _run(kind: str, body: schemas.ImportRequest, user: str | None, today, now) -
             companies_to_add=result.companies_to_add,
             contacts_to_add=result.contacts_to_add,
         ),
+        deals=[schemas.ShownDeal(**item) for item in result.shown],
         rejected=[schemas.RejectedRow(row=row, reason=reason) for row, reason in result.rejected[: importer.LISTED]],
         rejected_more=max(0, len(result.rejected) - importer.LISTED),
         ignored_columns=result.ignored,

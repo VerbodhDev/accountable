@@ -1,10 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { holdSaves, mockApi, renderApp, startSignedIn, user } from "../test-utils";
 import { ImportPage } from "./ImportPage";
 
 const REPLY = {
+  deals: [] as { row: number; name: string; stage: string; value: number; amount: string; rounded: boolean }[],
   counts: { new: 2, existing: 1, rejected: 1, companies_to_add: 0, contacts_to_add: 0 },
   rejected: [{ row: 4, reason: "Enter a name" }],
   rejected_more: 0,
@@ -218,5 +219,99 @@ describe("the Import page", () => {
     await user().click(screen.getByRole("button", { name: "Import another file" }));
     expect(screen.queryByText(/^Added/)).toBeNull();
     await waitFor(() => expect(screen.getByRole("button", { name: "Choose file" })).toBeTruthy());
+  });
+
+  it("lists the first new deals with their stage and amount, saying when an amount was rounded", async () => {
+    showPage({
+      "POST /imports/deals": {
+        ...REPLY,
+        counts: { new: 12, existing: 0, rejected: 0, companies_to_add: 0, contacts_to_add: 0 },
+        rejected: [],
+        deals: [
+          { row: 2, name: "Office lunch", stage: "New", value: 451, amount: "450.5", rounded: true },
+          { row: 3, name: "Garden party", stage: "Won", value: 3000, amount: "3000", rounded: false },
+        ],
+      },
+    });
+    await user().click(screen.getByRole("radio", { name: "Deals" }));
+    await choose(file("x", "deals.csv"));
+    const table = await screen.findByRole("table", { name: "New deals" });
+    const rows = within(table).getAllByRole("row");
+    expect(
+      within(rows[1])
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["2", "Office lunch", "New", "$451 (rounded from 450.5)"]);
+    expect(
+      within(rows[2])
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["3", "Garden party", "Won", "$3,000"]);
+    expect(screen.getByText("and 10 more new deals")).toBeTruthy();
+  });
+
+  it("lists no deals for a companies file", async () => {
+    showPage();
+    await choose();
+    await screen.findByText("Already there");
+    expect(screen.queryByRole("table", { name: "New deals" })).toBeNull();
+  });
+
+  it("shows the file size message for a body the backend found too big, with no Try again", async () => {
+    showPage({ "POST /imports/companies": () => ({ status: 413, body: { detail: "That's too big to send." } }) });
+    await choose();
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This file is too large. Split it into files of 2,000 rows or fewer.",
+    );
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("previews as the kind that is chosen when the file has been read, if the kind changed meanwhile", async () => {
+    const calls = showPage({ "POST /imports/contacts": { ...REPLY, counts: { ...REPLY.counts, new: 4 } } });
+    let finish = () => {};
+    vi.spyOn(FileReader.prototype, "readAsText").mockImplementation(function (this: FileReader) {
+      finish = () => {
+        Object.defineProperty(this, "result", { value: TEXT, configurable: true });
+        this.onload?.(new ProgressEvent("load") as ProgressEvent<FileReader>);
+      };
+    });
+    await choose();
+    await user().click(screen.getByRole("radio", { name: "Contacts" }));
+    finish();
+    expect(await screen.findByRole("button", { name: "Import 4 new contacts" })).toBeTruthy();
+    expect(calls.map((call) => call.path)).toEqual(["/imports/contacts"]);
+    vi.restoreAllMocks();
+  });
+
+  it("says a file it cannot read cannot be read, and carries on", async () => {
+    showPage();
+    vi.spyOn(FileReader.prototype, "readAsText").mockImplementation(function (this: FileReader) {
+      this.onerror?.(new ProgressEvent("error") as ProgressEvent<FileReader>);
+    });
+    await choose();
+    expect((await screen.findByRole("alert")).textContent).toBe("This file could not be read.");
+    vi.restoreAllMocks();
+    await choose();
+    expect(await screen.findByText("Already there")).toBeTruthy();
+  });
+
+  it("leaves the kind and the file button alone while a save is on its way", async () => {
+    showPage();
+    await choose();
+    const button = await screen.findByRole("button", { name: "Import 2 new companies" });
+    const release = holdSaves();
+    await user().click(button);
+    expect((screen.getByRole("radio", { name: "Contacts" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Choose file" }) as HTMLButtonElement).disabled).toBe(true);
+    release();
+    await screen.findByText(/^Added 2 organizations/);
+    expect((screen.getByRole("radio", { name: "Contacts" }) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("announces a short summary of a preview, not every figure and row", async () => {
+    showPage();
+    await choose();
+    await screen.findByText("Already there");
+    expect(screen.getByRole("status").textContent).toBe("Preview ready: 2 new, 1 already there, 1 rejected");
   });
 });

@@ -1,5 +1,8 @@
 """Importing a HubSpot export: the preview, the save, and what each kind of file adds."""
 
+import threading
+from typing import Any
+
 import pytest
 from accountable import db, users
 from accountable.crm.tables import contacts as contacts_table
@@ -440,3 +443,51 @@ def test_a_contacts_file_sent_as_companies_is_refused_and_adds_nothing(api):
         reply.json()["fields"]["csv"] == "This looks like a contacts file, not a companies file. Choose Contacts above."
     )
     assert count(organizations) == 0
+
+
+def test_a_deals_preview_lists_the_first_new_deals_with_their_stage_and_rounded_amount(api):
+    rows = [
+        deal(f"Event {n}", "Qualified To Buy", "450.5" if n == 0 else "100", "2026-11-05", "Marigold Kitchens", ASHA)
+        for n in range(12)
+    ]
+    body = post(api, "deals", deals(*rows)).json()
+    assert body["counts"]["new"] == 12
+    assert len(body["deals"]) == 10
+    assert body["deals"][0] == {
+        "row": 2,
+        "name": "Event 0",
+        "stage": "Qualified",
+        "value": 451,
+        "amount": "450.5",
+        "rounded": True,
+    }
+    assert body["deals"][1]["rounded"] is False
+
+
+def test_only_a_deals_reply_lists_deals(api):
+    assert post(api, "companies", companies(company("Marigold Kitchens"))).json()["deals"] == []
+    contacts_file = contacts(contact("Asha", "Reed", "Marigold Kitchens"))
+    assert post(api, "contacts", contacts_file).json()["deals"] == []
+
+
+def test_a_won_deal_with_a_new_contact_makes_that_contact_a_customer(api):
+    text = deals(deal("Corporate dinner", "Closed Won", "3000", "2026-10-10", "Marigold Kitchens", ASHA))
+    post(api, "deals", text, save=True)
+    [asha] = people(api)
+    assert (asha["name"], asha["status"]) == ("Asha Reed", "customer")
+
+
+def test_a_save_takes_the_write_lock_and_a_preview_does_not(api):
+    """Two imports at once cannot both add the same record, because a save waits for the write lock (I22)."""
+    text = companies(company("Marigold Kitchens"))
+    saved: list[Any] = []
+    with db._write_lock:
+        thread = threading.Thread(target=lambda: saved.append(post(api, "companies", text, save=True)))
+        thread.start()
+        thread.join(timeout=0.5)
+        assert thread.is_alive(), "the save went ahead while another write held the lock"
+        assert post(api, "companies", text).status_code == 200
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert [reply.status_code for reply in saved] == [200]
+    assert count(organizations) == 1

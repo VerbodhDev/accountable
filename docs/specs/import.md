@@ -63,8 +63,9 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | A Won or Lost deal's close date is in the future ([F7](records.md#adding-and-editing)) | A won or lost deal can't close in the future |
 | Associated Company (Primary) is blank | No company |
 | Number of Associated Contacts is not a number | Number of Associated Contacts is not a number |
-| Number of Associated Contacts is 0 | No contact |
+| Number of Associated Contacts is 0 or blank | No contact |
 | Number of Associated Contacts is more than 1 | More than one contact. Accountable keeps one main contact. |
+| Associated Contact is longer than 500 characters | The contact cell is too long |
 | Associated Contact holds no email | The contact has no email, so it cannot be matched |
 | Associated Contact holds an email but no name | The contact has no name |
 
@@ -100,15 +101,15 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | `POST /imports/contacts` | The same body. |
 | `POST /imports/deals` | The same body. |
 
-Every reply has `counts` (`new`, `existing`, `rejected`, `companies_to_add` and `contacts_to_add`, the last two zero where a kind adds none), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `fields` holding the message under `csv`, like every other refused request. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
+Every reply has `counts` (`new`, `existing`, `rejected`, `companies_to_add` and `contacts_to_add`, the last two zero where a kind adds none), `deals` (for a deals file, the first 10 new deals, each with its `row`, `name`, `stage`, `value`, `amount` as written and `rounded`; empty for the other kinds), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `fields` holding the message under `csv`, like every other refused request. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
 
 ## The screen
 
 The Import page has the page title "Import from HubSpot", and one panel under it, in the panel color, rounded like the other panels. The look follows [Visual design](visual-design.md#visual-design), in light and dark mode.
 
 - **I23.** The panel has three steps, top to bottom. Step 1 is "What is in the file?", with three radio choices: Companies, Contacts and Deals. Under Deals a muted line says how to export (I6). Step 2 is a Choose file button that opens the browser's file picker for .csv files, with the chosen file's name beside it, shortened with "…" if it is long. Step 3 is the preview.
-- **I24.** The preview shows three figures in a row: New, Already there and Rejected. For contacts a fourth, Companies to add, and for deals a fourth and a fifth, Companies to add and Contacts to add, come before Already there. Under them a line names the ignored columns. If any row is rejected, a table lists Row and Reason, up to 100 rows, and a line says how many more there are. A deal's row shows its stage and its rounded amount.
+- **I24.** The preview shows three figures in a row: New, Already there and Rejected. For contacts a fourth, Companies to add, and for deals a fourth and a fifth, Companies to add and Contacts to add, come before Already there. Under them a line names the ignored columns. If any row is rejected, a table lists Row and Reason, up to 100 rows, and a line says how many more there are. For a deals file, a table under them lists the first 10 new deals, each with its row, name, stage and amount. An amount that was rounded shows the whole dollars it becomes, with the amount as written beside it, such as "$451 (rounded from 450.5)". A line says how many more new deals there are.
 - **I25.** The primary button reads "Import 12 new companies", with the number and the kind. It is off when nothing is new. Beside it, Choose another file clears the preview. While a file is being read the panel says "Reading the file". While it saves, the button is quiet and says "Importing".
 - **I26.** After a save the panel says what was added, such as "Added 12 organizations. 3 were already there.", and links to the list it filled: Organizations, Contacts or Deals. The preview is gone, so the same click cannot save twice ([F10](records.md#adding-and-editing)).
-- **I27.** A refused file shows its message in place of the preview, in the error style the forms use. A request that fails to arrive says so, keeps the file chosen, and offers to try again. The page works by keyboard, shows a focus ring, and uses no animation beyond the app's own.
+- **I27.** A refused file shows its message in place of the preview, in the error style the forms use. A request that fails to arrive says so, keeps the file chosen, and offers to try again. A body the backend finds too big gets the message of I17, with no Try again. A file the browser cannot read says "This file could not be read.". While a save is on its way, the kind and the file button are off. The preview is announced as one line, such as "Preview ready: 2 new, 1 already there, 1 rejected", not figure by figure. The page works by keyboard, shows a focus ring, and uses no animation beyond the app's own.
 - **I28.** Opening Import with no file chosen shows step 1 and step 2 only. Changing the kind clears the preview and previews the chosen file again as the new kind, so a preview never sits beside the wrong choice.

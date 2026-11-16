@@ -19,6 +19,7 @@ from accountable.crm.tables import contacts, deals, organizations
 log = logging.getLogger(__name__)
 
 LISTED = 100
+SHOWN = 10
 
 
 @dataclass
@@ -28,6 +29,7 @@ class Result:
     rejected: list[tuple[int, str]] = field(default_factory=list)
     companies_to_add: int = 0
     contacts_to_add: int = 0
+    shown: list[dict] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
     saved: bool = False
 
@@ -250,6 +252,17 @@ def _deals(
             people[email_key] = contact_id
             result.contacts_to_add += 1
         result.new += 1
+        if len(result.shown) < SHOWN:
+            result.shown.append(
+                {
+                    "row": row.number,
+                    "name": deal.name,
+                    "stage": rules.STAGE_NAMES[deal.stage],
+                    "value": deal.value,
+                    "amount": fields["amount"],
+                    "rounded": fields["rounded"],
+                }
+            )
         if save:
             values = {**deal.model_dump(), "organization_id": organization_id, "main_contact_id": contact_id}
             add_deal(conn, values, today=today, now=now, user=user)
