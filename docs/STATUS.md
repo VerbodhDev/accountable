@@ -1248,3 +1248,12 @@ Built on the `hubspot-import` branch, following `docs/changes/hubspot-import/pla
 - **Review:** the reviewer found a slow pattern in the Associated Contact cell (a cell of 100,000 spaces took seconds, and 49 seconds for the six hostile tests; it is now read without a backtracking pattern and a cell over 500 characters is rejected), a preview that did not show a deal's stage or its rounded amount, a 413 that showed the wrong message, no test that a save takes the write lock, and four ways the page could show a stale or wrong-kind preview. All are fixed with tests, and the lock test was shown to fail when the save skips the lock.
 - **Checked:** `npm run check` passes.
 - **Not covered:** a deal that names more than one contact is rejected, because how HubSpot separates several contacts in one cell has not been seen. The page has no phone layout, like the rest of the app, and at 500 px the top bar already overflows.
+
+## Improve: the HubSpot import
+
+Run after the review fixes and before any merge, as `docs/IMPROVE.md` says.
+
+- **What this run changed:** `docs/REVIEW.md`'s Security pass now asks, for every place text the sender controls meets a path, a prompt, a pattern or a query, what the worst input does and where the test is. It has happened three times this month: a tool path built from the model's text, a prompt that flattened records into the user's turns, and a pattern on a long cell. `AGENTS.md` notes that a script with a `\uXXXX` escape is refused before it runs. `docs/IMPROVE.md` gains a step 1 line about tests that fail in a full run and pass alone, and four lines in Seen once.
+- **Harness changes on other branches:** `multi-user` and `my-main`, which hold the same commits, have 13 commits that touch `AGENTS.md`, `docs/REVIEW.md`, `scripts` or `.claude`, and `main` has none of them. A merge of that line will need to keep both sides of `AGENTS.md` and `docs/REVIEW.md`.
+- **What the log search could not show:** the earlier sessions' logs were searched for phrases only. Three of the four earlier sessions matched the port-collision text and the refused-escape text, but the matches were not opened one by one, so they may be mentions of the repo's own text and not failures. The five unexplained end-to-end failures stay unexplained until a run prints the failing step.
+- **Not done:** the check that prints the failing step of a browser test is only a suggestion, in Seen once.
