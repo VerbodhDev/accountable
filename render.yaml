@@ -40,3 +40,6 @@ services:
         sync: false
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
+      # The Copilot's token. A missing one does not stop the app. The value stays on Render.
+      - key: CLAUDE_CODE_OAUTH_TOKEN
+        sync: false

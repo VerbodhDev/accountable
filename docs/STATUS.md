@@ -1061,7 +1061,7 @@ Built on the `quote-to-invoice` branch from `docs/changes/quote-to-invoice/plan.
 
 Accountable runs two ways:
 
-- **The local copy**, from `npm run dev`, runs on your own computer with made-up data and four made-up teammates. Nothing you enter leaves the computer.
+- **The local copy**, from `npm run dev`, runs on your own computer with made-up data and four made-up teammates. The records stay on this computer. A Copilot question calls Anthropic when `CLAUDE_CODE_OAUTH_TOKEN` is set.
 - **The shared app** is the team's Accountable, on Render, with its data in Supabase. Everyone signs in with their own email and password. `npm start` runs the same thing on your computer, against the same Supabase data. [The shared app](#the-shared-app) below says how to set it up.
 
 ### Install two things, once
@@ -1079,7 +1079,7 @@ Open a terminal in this folder and run:
 npm run dev
 ```
 
-The first time, this downloads what Accountable needs, so it takes a few minutes and needs an internet connection. After that it starts in seconds and works with no connection at all. When it's ready it prints an address:
+The first time, this downloads what Accountable needs, so it takes a few minutes and needs an internet connection. After that it starts in seconds. The records work with no connection. A Copilot question is the one call that leaves the computer, and only when `CLAUDE_CODE_OAUTH_TOKEN` is set in `.env`. When it's ready it prints an address:
 
 ```
 Accountable is running at http://localhost:5173
@@ -1233,3 +1233,7 @@ The books are now visible. Every invoice, payment and bill shows an Accounting p
 - The Journal's default order within one day is the newest posted first (J17: a reversal above the entry it cancels), not oldest as before. `test_books_reads.py` changed to match. The spec's `backend.md` entry for `/books/entries` now says so.
 - `GET /books/entries` also accepts `kind=bill_payment`, and each ledger line carries its `kind` and `event`, and the reply the date of the newest line, as the spec lists.
 - `test_every_route.py` treats the ledger's `{key}` as an account key (404 when unknown), not a record id.
+
+## Copilot
+
+Built on the `copilot` branch, following `docs/changes/copilot/plan.md`. A Copilot button in the top bar, after the search box, opens a panel on every signed-in screen. A question looks up records through Accountable's own API. A change waits for Confirm. Cancel and Escape leave the records as they were. `npm run dev` and `npm start` pass `CLAUDE_CODE_OAUTH_TOKEN` to the backend only. The default model is `claude-sonnet-4-5`, and `COPILOT_MODEL` overrides it. The tests use a stand-in and never call Anthropic. Without a token, the panel says the Copilot needs a token, and the rest of the app still works.

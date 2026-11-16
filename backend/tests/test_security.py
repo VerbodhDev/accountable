@@ -2,7 +2,7 @@
 
 import pytest
 from accountable import settings
-from accountable.main import make_app
+from accountable.main import CLOUD_PAGE, make_app
 from conftest import PROJECT
 from fastapi.testclient import TestClient
 
@@ -67,6 +67,35 @@ def test_a_form_post_is_refused(client_in_each_copy):
 def test_no_cross_origin_headers_are_sent(client_in_each_copy):
     reply = client_in_each_copy.get("/api/meta", headers={"origin": "http://evil.example"})
     assert not [name for name in reply.headers if name.lower().startswith("access-control-")]
+
+
+def test_the_cloud_page_may_call_this_computer(client_in_each_copy):
+    reply = client_in_each_copy.options(
+        "/api/meta",
+        headers={
+            "origin": CLOUD_PAGE,
+            "access-control-request-method": "GET",
+            "access-control-request-headers": "authorization",
+            "access-control-request-private-network": "true",
+        },
+    )
+    assert reply.status_code == 200
+    assert reply.headers["access-control-allow-origin"] == CLOUD_PAGE
+    assert reply.headers["access-control-allow-private-network"] == "true"
+
+
+def test_another_website_may_not_call_this_computer(client_in_each_copy):
+    reply = client_in_each_copy.options(
+        "/api/meta",
+        headers={
+            "origin": "https://evil.example",
+            "access-control-request-method": "GET",
+            "access-control-request-private-network": "true",
+        },
+    )
+    assert reply.status_code == 400
+    assert reply.text == "Disallowed CORS origin"
+    assert reply.headers.get("access-control-allow-origin") != "https://evil.example"
 
 
 def test_a_token_in_a_cookie_counts_for_nothing(copy):

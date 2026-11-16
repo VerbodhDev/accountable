@@ -13,6 +13,7 @@ from pathlib import Path, PurePath, PurePosixPath
 import jwt
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -37,6 +38,7 @@ from accountable.cashflow import schemas as cashflow_schemas
 from accountable.company import router as company_settings
 from accountable.company import schemas as company_schemas
 from accountable.company.documents import Numbered
+from accountable.copilot.router import router as copilot_router
 from accountable.crm import cash as crm_cash
 from accountable.crm import schemas as crm_schemas
 from accountable.crm import search as crm_search
@@ -127,6 +129,8 @@ AREAS = [
     Area(routers=[books_router.router], messages=books_schemas.FIELD_MESSAGES),
     # Aged balances keep no records and read the invoices and bills. They hold nothing, and give no search kinds or cash.
     Area(routers=[aging_router.router], messages=aging_schemas.FIELD_MESSAGES),
+    # The Copilot keeps no records. It calls this app's own routes as the signed-in user.
+    Area(routers=[copilot_router], messages={}),
 ]
 
 
@@ -151,13 +155,21 @@ def make_app(
     app.state.labels = {kind: names for area in AREAS for kind, names in area.labels.items()}
 
     # Each middleware added goes outside the ones before it, so a request meets these
-    # in the opposite order: the host, then the token, then the body's size, then its
-    # type. No cross-origin middleware is added, and tokens travel in a header, never a
-    # cookie, so another website in the same browser can't make a signed-in request.
+    # in the opposite order: the CloudFront page, then the host, then the token, then
+    # the body's size, then its type. That page is the one other origin allowed to call
+    # this computer, and only after Chrome's private-network check. Tokens travel in a
+    # header, never a cookie, so any other website still can't make a signed-in request.
     app.middleware("http")(_json_only)
     app.add_middleware(BodyLimit)
     app.add_middleware(auth.RequireSignIn, open_paths=_local_sign_in_paths() if shared is None else ())
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts())
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[CLOUD_PAGE],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Authorization"],
+        allow_private_network=True,
+    )
     app.exception_handler(RequestValidationError)(_invalid_request)
     app.exception_handler(api.FieldError)(_invalid_field)
     app.exception_handler(Exception)(_unexpected_error)
@@ -168,6 +180,10 @@ def make_app(
     else:
         app.mount("/", BuiltFrontend(directory=frontend))
     return app
+
+
+# The built page on CloudFront. It calls the API on this computer.
+CLOUD_PAGE = "https://d3lzszqmcqjrkz.cloudfront.net"
 
 
 def trusted_hosts() -> list[str]:

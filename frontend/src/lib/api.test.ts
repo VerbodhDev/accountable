@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { startSignedIn } from "../test-utils";
-import { ApiError, CONNECTION_MESSAGE, api, download, fetchFile, isConnectionLost, onReconnect } from "./api";
+import { ApiError, CONNECTION_MESSAGE, api, apiRoot, download, fetchFile, isConnectionLost, onReconnect } from "./api";
 import { queryDefaults } from "./queryDefaults";
 import { SESSION_KEY, signInWithToken, signOut, useSession } from "./session";
 
@@ -45,6 +45,12 @@ afterEach(async () => {
 });
 
 describe("api", () => {
+  it("keeps a relative path on this computer and uses the local API from any other host", () => {
+    expect(apiRoot("localhost:5173")).toBe("");
+    expect(apiRoot("127.0.0.1:8000")).toBe("");
+    expect(apiRoot("d3lzszqmcqjrkz.cloudfront.net")).toBe("http://127.0.0.1:8000");
+  });
+
   it("returns the reply's JSON", async () => {
     vi.stubGlobal("fetch", async () => reply(200, { name: "Acme" }));
     await expect(api("/organizations/1")).resolves.toEqual({ name: "Acme" });

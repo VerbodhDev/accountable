@@ -4,7 +4,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { ROOT, isReady, localEnv, runSync, start } from "./setup.mjs";
+import { ROOT, isReady, runSync, start, strippedLocalEnv, testServerEnv } from "./setup.mjs";
 import { READY, stackFor } from "./test-plan.mjs";
 
 const WAIT_MS = 60_000;
@@ -21,7 +21,10 @@ function stopEverything(message) {
 }
 
 // Servers sharing an empty cache would all try to fill it, so it's filled first.
-if (runSync(process.execPath, [vite, "optimize", "frontend", "--logLevel", "warn"]).status !== 0) {
+if (
+  runSync(process.execPath, [vite, "optimize", "frontend", "--logLevel", "warn"], { env: strippedLocalEnv() })
+    .status !== 0
+) {
   stopEverything("Couldn't prepare the frontend for the tests.");
 }
 
@@ -29,7 +32,7 @@ for (let index = 0; index < workers; index += 1) {
   const stack = stackFor({ slot, worker: index, database: process.env.ACCOUNTABLE_DB });
   mkdirSync(path.dirname(stack.database), { recursive: true });
   const env = {
-    ...localEnv(),
+    ...testServerEnv(),
     ACCOUNTABLE_DB: stack.database,
     ACCOUNTABLE_WEB_PORT: String(stack.webPort),
     ACCOUNTABLE_API_PORT: String(stack.apiPort),

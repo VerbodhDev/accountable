@@ -352,6 +352,7 @@ test("the top bar stays on one line at 1280 by 720, even with the widest date", 
   await page.goto("/products");
   const bar = page.getByRole("banner");
   await expect(bar).toContainText("Nov 30, 2026");
+  await expect(bar.getByRole("button", { name: "Copilot" })).toBeVisible();
   await expect(bar.getByRole("button", { name: `Menu for ${SIGNED_IN.name}` })).toBeVisible();
 
   expect((await bar.boundingBox())!.height).toBe(56);
@@ -363,6 +364,7 @@ test("the top bar stays on one line at 1280 by 720, even with the widest date", 
   for (const part of [
     bar.getByRole("navigation", { name: "Sections" }),
     bar.getByRole("combobox"),
+    bar.getByRole("button", { name: "Copilot" }),
     date,
     bar.getByRole("button", { name: `Menu for ${SIGNED_IN.name}` }),
   ]) {

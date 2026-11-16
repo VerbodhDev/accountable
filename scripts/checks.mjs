@@ -20,7 +20,7 @@ import { createRequire } from "node:module";
 import { availableParallelism, tmpdir, totalmem } from "node:os";
 import path from "node:path";
 
-import { ROOT, localEnv, setup, start, stop } from "./setup.mjs";
+import { ROOT, setup, start, stop, strippedLocalEnv } from "./setup.mjs";
 import { TURNS, chooseWorkers, workerPorts } from "./test-plan.mjs";
 import { duration, readPlaywright, readPytest, readVitest, summarize } from "./test-report.mjs";
 import { joinTestRuns } from "./test-runs.mjs";
@@ -224,7 +224,7 @@ async function startRun(mostWorkers) {
 
   // Without the shared app's settings, so no check or test can reach Supabase.
   const env = {
-    ...localEnv(),
+    ...strippedLocalEnv(),
     ACCOUNTABLE_DB: report("test.db"),
     ACCOUNTABLE_TEST_SLOT: String(thisRun.slot),
     // Kept between runs to save filling it each time, and apart from the cache npm run dev uses.

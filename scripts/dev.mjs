@@ -1,8 +1,10 @@
 // npm run dev: setup, port check, both servers, then the address.
+// The two servers are started directly. One shared environment would hand the Copilot token to Vite.
 
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { ROOT, localEnv, setup, start, stopIfTaken, waitUntilReady } from "./setup.mjs";
+import { ROOT, devBackendEnv, devWebEnv, setup, start, stopIfTaken, waitUntilReady } from "./setup.mjs";
 
 const webPort = Number(process.env.ACCOUNTABLE_WEB_PORT ?? 5173);
 const apiPort = Number(process.env.ACCOUNTABLE_API_PORT ?? 8765);
@@ -12,38 +14,56 @@ setup();
 await stopIfTaken(webPort);
 await stopIfTaken(apiPort);
 
-const node = JSON.stringify(process.execPath);
-const concurrently = path.join(ROOT, "node_modules", "concurrently", "dist", "bin", "index.js");
-const vite = JSON.stringify(path.join(ROOT, "node_modules", "vite", "bin", "vite.js"));
-const frontend = JSON.stringify(path.join(ROOT, "frontend"));
+const envFile = path.join(ROOT, ".env");
+const envFileText = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
+const ports = {
+  ACCOUNTABLE_WEB_PORT: String(webPort),
+  ACCOUNTABLE_API_PORT: String(apiPort),
+};
 
-// concurrently runs each server through a shell. On Linux that shell stays in between,
-// and a stop ends it at once, so this script would exit while a server still held its port.
-// exec makes the shell become the server. Windows's cmd.exe has no exec.
-const exec = process.platform === "win32" ? "" : "exec ";
-
-const servers = start(
-  process.execPath,
+const backend = start(
+  "uv",
   [
-    concurrently,
-    "--raw",
-    "--kill-others",
-    `${exec}uv run --no-sync uvicorn accountable.main:app --host 127.0.0.1 --port ${apiPort} --log-level warning`,
-    `${exec}${node} ${vite} ${frontend} --logLevel warn`,
+    "run",
+    "--no-sync",
+    "uvicorn",
+    "accountable.main:app",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(apiPort),
+    "--log-level",
+    "warning",
   ],
-  { env: { ...localEnv(), ACCOUNTABLE_WEB_PORT: String(webPort), ACCOUNTABLE_API_PORT: String(apiPort) } },
+  { env: { ...devBackendEnv(process.env, envFileText), ...ports } },
+);
+
+const web = start(
+  process.execPath,
+  [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), path.join(ROOT, "frontend"), "--logLevel", "warn"],
+  { env: { ...devWebEnv(process.env), ...ports } },
 );
 
 let running = true;
-servers.on("exit", (code) => {
+
+function ended(code) {
+  if (!running) return;
   running = false;
+  backend.kill("SIGTERM");
+  web.kill("SIGTERM");
   process.exit(code ?? 0);
-});
+}
+
+backend.on("exit", ended);
+web.on("exit", ended);
 
 // Ctrl+C reaches every process in the window on Mac and Linux, but a signal sent
 // to this process alone would not, so pass it on and wait for the servers to go.
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => servers.kill(signal));
+  process.on(signal, () => {
+    backend.kill(signal);
+    web.kill(signal);
+  });
 }
 
 const addresses = [`http://127.0.0.1:${apiPort}/api/meta`, `http://127.0.0.1:${webPort}/`];
@@ -52,5 +72,6 @@ if (await waitUntilReady(addresses, () => running, READY_TIMEOUT_MS)) {
   console.log("Keep this window open while you use it. Press Ctrl+C to stop.\n");
 } else if (running) {
   console.error("Accountable didn't start in time.");
-  servers.kill("SIGTERM");
+  backend.kill("SIGTERM");
+  web.kill("SIGTERM");
 }

@@ -4,7 +4,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ROOT, SHARED_SETTINGS } from "./setup.mjs";
-import { PORT, backendCommand, buildEnv, missingMessage, readSettings } from "./start.mjs";
+import { PORT, backendCommand, backendEnv, buildEnv, missingMessage, readSettings } from "./start.mjs";
+
+const TOKEN = "copilot-token-shape";
 
 const DATABASE_URL = "postgresql://postgres.project:database-password@pooler.supabase.example:5432/postgres";
 const SUPABASE_URL = "https://project.supabase.example";
@@ -59,7 +61,7 @@ describe("missingMessage", () => {
 });
 
 describe("buildEnv", () => {
-  const shell = { ...ALL, PATH: "/usr/bin", VITE_SOMETHING_ELSE: "x", vite_lower: "y" };
+  const shell = { ...ALL, PATH: "/usr/bin", VITE_SOMETHING_ELSE: "x", vite_lower: "y", CLAUDE_CODE_OAUTH_TOKEN: TOKEN };
   const env = buildEnv(ALL, shell);
 
   it("gives the build the URL and the publishable key, as VITE_ settings", () => {
@@ -82,6 +84,33 @@ describe("buildEnv", () => {
   it("keeps the rest of the shell, so the build can find its tools", () => {
     expect(env.PATH).toBe("/usr/bin");
   });
+
+  it("never gives it the Copilot token", () => {
+    expect(env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(Object.values(env).join("\n")).not.toContain(TOKEN);
+  });
+});
+
+describe("backendEnv", () => {
+  const file = `CLAUDE_CODE_OAUTH_TOKEN="from-file"\n`;
+
+  it("passes the token from the file when the shell has none, with the three settings", () => {
+    const env = backendEnv(ALL, { PATH: "/usr/bin" }, file);
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("from-file");
+    expect(env.DATABASE_URL).toBe(DATABASE_URL);
+    expect(env.SUPABASE_URL).toBe(SUPABASE_URL);
+    expect(env.SUPABASE_PUBLISHABLE_KEY).toBe(SUPABASE_PUBLISHABLE_KEY);
+  });
+
+  it("takes the shell's token over the file's", () => {
+    expect(backendEnv(ALL, { CLAUDE_CODE_OAUTH_TOKEN: "from-shell" }, file).CLAUDE_CODE_OAUTH_TOKEN).toBe("from-shell");
+  });
+
+  it("leaves the token out when neither has one", () => {
+    const env = backendEnv(ALL, { PATH: "/usr/bin", CLAUDE_CODE_OAUTH_TOKEN: "  " }, "");
+    expect(env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(env.PATH).toBe("/usr/bin");
+  });
 });
 
 describe("render.yaml", () => {
@@ -101,5 +130,9 @@ describe("render.yaml", () => {
 
   it("checks health at the page, since every /api address needs a token", () => {
     expect(blueprint).toMatch(/^\s*healthCheckPath: \/$/m);
+  });
+
+  it("names the Copilot token without a value", () => {
+    expect(blueprint).toMatch(/- key: CLAUDE_CODE_OAUTH_TOKEN\n\s*sync: false\n/);
   });
 });

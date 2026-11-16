@@ -6,7 +6,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
-import { ROOT, SHARED_SETTINGS, localEnv, runSync, setup, start, stop, stopIfTaken, waitUntilReady } from "./setup.mjs";
+import {
+  ROOT,
+  SHARED_SETTINGS,
+  readOptional,
+  runSync,
+  setup,
+  start,
+  stop,
+  stopIfTaken,
+  strippedLocalEnv,
+  waitUntilReady,
+  withToken,
+} from "./setup.mjs";
 
 export const PORT = 8000;
 
@@ -35,12 +47,19 @@ export function missingMessage(missing) {
  * read them, so DATABASE_URL and its password must never be one.
  */
 export function buildEnv(settings, shell = process.env) {
-  const withoutVite = Object.entries(localEnv(shell)).filter(([name]) => !name.toUpperCase().startsWith("VITE_"));
+  const withoutVite = Object.entries(strippedLocalEnv(shell)).filter(
+    ([name]) => !name.toUpperCase().startsWith("VITE_"),
+  );
   return {
     ...Object.fromEntries(withoutVite),
     VITE_SUPABASE_URL: settings.SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: settings.SUPABASE_PUBLISHABLE_KEY,
   };
+}
+
+/** The shared app's process: its settings, and the Copilot token when the shell or the file has one. */
+export function backendEnv(settings, shell = process.env, envFileText = "") {
+  return withToken({ ...shell, ...settings }, readOptional(shell, envFileText));
 }
 
 /** The backend's command, which is render.yaml's startCommand apart from the address. */
@@ -61,9 +80,10 @@ export function backendCommand(host, port) {
 
 function settingsOrStop() {
   const envFile = path.join(ROOT, ".env");
-  const { settings, missing } = readSettings(process.env, existsSync(envFile) ? readFileSync(envFile, "utf8") : "");
+  const envFileText = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
+  const { settings, missing } = readSettings(process.env, envFileText);
   if (missing.length > 0) stop(missingMessage(missing));
-  return settings;
+  return { settings, envFileText };
 }
 
 function build(settings) {
@@ -76,13 +96,15 @@ function build(settings) {
 }
 
 async function main() {
-  const settings = settingsOrStop();
+  const { settings, envFileText } = settingsOrStop();
   setup();
   await stopIfTaken(PORT);
   build(settings);
 
   console.log("Starting the shared app. The first start against an empty database also adds the sample data.");
-  const server = start("uv", backendCommand("127.0.0.1", PORT), { env: { ...process.env, ...settings } });
+  const server = start("uv", backendCommand("127.0.0.1", PORT), {
+    env: backendEnv(settings, process.env, envFileText),
+  });
   let running = true;
   server.on("exit", (code) => {
     running = false;
