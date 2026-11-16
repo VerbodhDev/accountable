@@ -1,11 +1,11 @@
 # Plan: the Accountable Copilot
 
-The default model is `claude-sonnet-5-5`. `COPILOT_MODEL` overrides it. No new dependency: the model call uses `httpx`, which the backend already has.
+The default model is `claude-sonnet-5-5`. `COPILOT_MODEL` overrides it. One new dependency, `claude-agent-sdk` (MIT), which runs Claude Code with the token. `httpx` stays for the tools' calls to the app itself.
 
 ## Files that change
 
 - `backend/accountable/copilot/router.py`. `POST /api/copilot` takes the question and the conversation. `POST /api/copilot/confirm` runs one write the user has just confirmed. `POST /api/copilot/cancel` drops it. The routes start with `copilot` and nothing else.
-- `backend/accountable/copilot/model.py`. Calls `https://api.anthropic.com/v1/messages` with `Authorization: Bearer` and the token, `anthropic-version: 2023-06-01`, and `anthropic-beta: oauth-2025-04-20`, because this token is a Claude Code sign-in, not an `x-api-key`. A missing token never calls out. HTTP 429 is the limit. Any other refusal is a plain failure.
+- `backend/accountable/copilot/model.py`. One model step through the Claude Agent SDK, which runs Claude Code with the token. No built-in tools, no settings files, one turn. The tools are declared and always denied, so the loop runs them. Direct calls to `https://api.anthropic.com/v1/messages` with the token got a bare 429.
 - `backend/accountable/copilot/tools.py`. The allowlist below. Each tool calls Accountable's own API in-process, with the signed-in user's `Authorization` header, through `httpx` and the app itself. No tool opens the database, and none imports another area.
 - `backend/accountable/copilot/loop.py`. Runs read tools at once, stops at the first write, and returns that write for confirmation. Record text stays inside tool results. The system prompt is fixed and never includes a record. At most 8 tool rounds, then the panel says it could not finish.
 - `backend/accountable/main.py`. One `Area` for the Copilot, with no search kinds, holds, cash, numbers or book labels.
@@ -35,7 +35,7 @@ The build stops here. ui-check, the review and `docs/IMPROVE.md` come after.
 
 ## Risks
 
-- Anthropic may refuse a Claude Code token on the public messages route. The beta header is the current way to send one. A refusal shows as a plain failure, and the rest of the app still works.
+- Anthropic refuses this token on the public messages route (a bare 429), so the call goes through Claude Code. The SDK's quickstart says third-party products may not offer claude.ai login or its rate limits. The owner chose this approach knowing that, for a local copy.
 - A write tool that ran before confirmation would break Z5. The loop returns the write and the confirm route is the only caller that performs it.
 - Putting the token in Vite's environment would put it in the built page. The build environment strips it, and a test reads the built script for the token's shape.
 - The top bar is tight at 1280px. The search box loses 40px so the 32px button fits on the same line.

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from accountable import api
 from accountable.copilot.loop import Turn, run_turn
-from accountable.copilot.model import CANNOT, FAILURE, AnthropicModel, MissingTokenModel, StubModel, using_stub
+from accountable.copilot.model import CANNOT, FAILURE, ClaudeCodeModel, MissingTokenModel, StubModel, using_stub
 from accountable.copilot.tools import Api, find
 
 router = APIRouter(prefix="/copilot")
@@ -46,14 +46,14 @@ class Done(BaseModel):
     sentence: str | None = None
 
 
-def model_for(request: Request) -> AnthropicModel | MissingTokenModel | StubModel:
+def model_for(request: Request) -> ClaudeCodeModel | MissingTokenModel | StubModel:
     """The stand-in only when the test server asks for it. A header cannot turn it on in production."""
     mode = request.headers.get("x-accountable-copilot-mode", "")
     if using_stub() and mode == "no-token":
         return MissingTokenModel()
     if using_stub():
         return StubModel()
-    return AnthropicModel()
+    return ClaudeCodeModel()
 
 
 @router.post("")

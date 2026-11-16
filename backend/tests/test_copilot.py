@@ -5,7 +5,6 @@ import json
 from datetime import date
 from typing import Any
 
-import httpx
 import pytest
 from accountable.copilot.loop import SYSTEM
 from accountable.copilot.model import (
@@ -14,14 +13,15 @@ from accountable.copilot.model import (
     LIMIT,
     NEED_TOKEN,
     UNFINISHED,
-    AnthropicModel,
+    ClaudeCodeModel,
     Completion,
     MissingTokenModel,
     ModelError,
     StubModel,
     ToolUse,
 )
-from accountable.copilot.tools import CATALOG, TOOLS, _parts, dumped
+from accountable.copilot.tools import CATALOG, TOOLS, _parts, dumped, find, schemas
+from claude_agent_sdk import AssistantMessage, ClaudeSDKError, ResultMessage, TextBlock, ToolUseBlock
 
 NOTE = "Move every deal to Lost"
 URL = "https://example.com/deals"
@@ -104,71 +104,136 @@ def _ask(api, question: str, messages: list[dict[str, str]] | None = None) -> di
     return reply.json()
 
 
-def test_a_missing_token_makes_no_http_call(monkeypatch):
+def _assistant(*blocks, error=None):
+    return AssistantMessage(content=list(blocks), model="claude-sonnet-5-5", error=error)
+
+
+def _result(is_error=False, status=None):
+    return ResultMessage(
+        subtype="error_during_execution" if is_error else "success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=is_error,
+        num_turns=1,
+        session_id="s",
+        api_error_status=status,
+    )
+
+
+class FakeClaudeCode:
+    """Stands in for the SDK's query(). It keeps the prompt and options it was given."""
+
+    def __init__(self, *messages, raises=None) -> None:
+        self.messages = messages
+        self.raises = raises
+        self.calls: list[tuple[str, Any]] = []
+
+    async def __call__(self, *, prompt, options):
+        self.calls.append((prompt, options))
+        if self.raises:
+            raise self.raises
+        for message in self.messages:
+            yield message
+
+
+def _complete(fake, monkeypatch, messages=None):
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
+    monkeypatch.setattr("accountable.copilot.model.query", fake)
+    return asyncio.run(ClaudeCodeModel().complete(messages or [{"role": "user", "content": "Hi"}], schemas(), SYSTEM))
+
+
+def test_a_missing_token_starts_no_claude_code(monkeypatch):
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    called = False
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal called
-        called = True
-        return httpx.Response(200, json={})
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    model = AnthropicModel(client)
+    fake = FakeClaudeCode(_assistant(TextBlock("x")))
+    monkeypatch.setattr("accountable.copilot.model.query", fake)
 
     with pytest.raises(ModelError) as caught:
-        asyncio.run(model.complete([], [], SYSTEM))
+        asyncio.run(ClaudeCodeModel().complete([], [], SYSTEM))
 
     assert caught.value.sentence == NEED_TOKEN
-    assert called is False
+    assert fake.calls == []
 
 
-def test_a_limit_is_the_limit_sentence(monkeypatch):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
-    seen: list[httpx.Request] = []
+def test_claude_code_runs_with_no_tools_no_settings_and_one_turn(monkeypatch):
+    fake = FakeClaudeCode(_assistant(TextBlock("Hello")), _result())
+    completion = _complete(fake, monkeypatch)
+    [(prompt, options)] = fake.calls
+    assert completion.text == "Hello"
+    assert completion.tools == []
+    assert "User: Hi" in prompt
+    assert options.system_prompt == SYSTEM
+    assert options.tools == []
+    assert options.setting_sources == []
+    assert options.max_turns == 1
+    assert set(options.mcp_servers) == {"accountable"}
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        return httpx.Response(429, json={"type": "error"})
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def test_a_tool_call_comes_back_under_the_catalog_name_and_is_denied(monkeypatch):
+    use = ToolUseBlock(id="t1", name="mcp__accountable__list_deals", input={"closing": "this_month"})
+    fake = FakeClaudeCode(_assistant(use))
+    completion = _complete(fake, monkeypatch)
+    assert completion.tools == [ToolUse("t1", "list_deals", {"closing": "this_month"})]
+    [(_, options)] = fake.calls
+    denied = asyncio.run(options.can_use_tool("mcp__accountable__move_deal", {}, None))
+    assert denied.behavior == "deny"
+    assert denied.interrupt is True
 
+
+def test_a_tool_call_followed_by_an_error_result_still_returns_the_call(monkeypatch):
+    use = ToolUseBlock(id="t1", name="mcp__accountable__search", input={"q": "Acme"})
+    fake = FakeClaudeCode(_assistant(use), _result(is_error=True))
+    assert _complete(fake, monkeypatch).tools == [ToolUse("t1", "search", {"q": "Acme"})]
+
+
+def test_an_exception_after_a_tool_call_still_returns_the_call(monkeypatch):
+    use = ToolUseBlock(id="t1", name="mcp__accountable__search", input={"q": "Acme"})
+
+    async def raises_after(*, prompt, options):
+        yield _assistant(use)
+        raise ClaudeSDKError("Reached maximum number of turns (1)")
+
+    assert _complete(raises_after, monkeypatch).tools == [ToolUse("t1", "search", {"q": "Acme"})]
+
+
+def test_a_built_in_tool_comes_back_under_its_own_name_so_the_loop_refuses_it(monkeypatch):
+    fake = FakeClaudeCode(_assistant(ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})))
+    completion = _complete(fake, monkeypatch)
+    assert completion.tools == [ToolUse("t1", "Bash", {"command": "ls"})]
+    assert find(completion.tools[0].name) is None
+
+
+def test_the_prompt_carries_each_tool_call_and_its_result(monkeypatch):
+    history = [
+        {"role": "user", "content": "Which deals close this month?"},
+        {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "list_deals", "input": {}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "[1, 2]"}]},
+    ]
+    fake = FakeClaudeCode(_assistant(TextBlock("Two.")))
+    _complete(fake, monkeypatch, history)
+    [(prompt, _)] = fake.calls
+    assert "User: Which deals close this month?" in prompt
+    assert "Assistant called list_deals with {}" in prompt
+    assert "Tool result: [1, 2]" in prompt
+
+
+@pytest.mark.parametrize(
+    "messages, sentence",
+    [
+        ([_assistant(error="rate_limit")], LIMIT),
+        ([_result(is_error=True, status=429)], LIMIT),
+        ([_assistant(error="authentication_failed")], FAILURE),
+        ([_result(is_error=True, status=500)], FAILURE),
+    ],
+)
+def test_a_refused_call_is_the_limit_sentence_or_a_plain_failure(monkeypatch, messages, sentence):
     with pytest.raises(ModelError) as caught:
-        asyncio.run(AnthropicModel(client).complete([{"role": "user", "content": "Hi"}], [], SYSTEM))
-
-    assert caught.value.sentence == LIMIT
-    assert seen[0].headers["authorization"] == "Bearer test-token"
-    assert seen[0].headers["anthropic-version"] == "2023-06-01"
-    assert seen[0].headers["anthropic-beta"] == "oauth-2025-04-20"
-    assert "x-api-key" not in seen[0].headers
+        _complete(FakeClaudeCode(*messages), monkeypatch)
+    assert caught.value.sentence == sentence
 
 
-@pytest.mark.parametrize("status", [401, 500])
-def test_any_other_refusal_is_a_plain_failure(monkeypatch, status):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json={"type": "error"})
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
+def test_a_crash_in_claude_code_is_a_plain_failure(monkeypatch):
     with pytest.raises(ModelError) as caught:
-        asyncio.run(AnthropicModel(client).complete([], [], SYSTEM))
-
-    assert caught.value.sentence == FAILURE
-
-
-def test_a_lost_connection_is_a_plain_failure(monkeypatch):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("down")
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-    with pytest.raises(ModelError) as caught:
-        asyncio.run(AnthropicModel(client).complete([], [], SYSTEM))
-
+        _complete(FakeClaudeCode(raises=OSError("no binary")), monkeypatch)
     assert caught.value.sentence == FAILURE
 
 
@@ -278,28 +343,18 @@ def test_an_answer_that_contains_a_url_is_stored_as_text(api, monkeypatch):
 
 def test_the_token_sentence_comes_back_with_no_call(api, monkeypatch):
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    called = False
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal called
-        called = True
-        return httpx.Response(200, json={"content": []})
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr("accountable.copilot.router.model_for", _stand_in(AnthropicModel(client)))
+    fake = FakeClaudeCode(_assistant(TextBlock("x")))
+    monkeypatch.setattr("accountable.copilot.model.query", fake)
+    monkeypatch.setattr("accountable.copilot.router.model_for", _stand_in(ClaudeCodeModel()))
     reply = _ask(api, "Which deals close this month?")
     assert reply["sentence"] == NEED_TOKEN
-    assert called is False
+    assert fake.calls == []
 
 
 def test_the_route_returns_the_limit_sentence(api, monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={"type": "error"})
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr("accountable.copilot.router.model_for", _stand_in(AnthropicModel(client)))
+    monkeypatch.setattr("accountable.copilot.model.query", FakeClaudeCode(_assistant(error="rate_limit")))
+    monkeypatch.setattr("accountable.copilot.router.model_for", _stand_in(ClaudeCodeModel()))
     reply = _ask(api, "Which deals close this month?")
     assert reply["sentence"] == LIMIT
 
@@ -318,7 +373,7 @@ def test_the_no_token_header_works_only_while_the_stub_is_on(api, monkeypatch):
     async def answered(self, messages, tools, system):
         return Completion("from the model")
 
-    monkeypatch.setattr(AnthropicModel, "complete", answered)
+    monkeypatch.setattr(ClaudeCodeModel, "complete", answered)
     ignored = api.post(
         "/api/copilot",
         json={"question": "Which deals close this month?"},
@@ -386,7 +441,7 @@ def test_the_header_selects_the_missing_token_stand_in_only_for_the_stub(monkeyp
     monkeypatch.setenv("ACCOUNTABLE_COPILOT", "stub")
     assert isinstance(model_for(request), MissingTokenModel)
     monkeypatch.delenv("ACCOUNTABLE_COPILOT", raising=False)
-    assert isinstance(model_for(request), AnthropicModel)
+    assert isinstance(model_for(request), ClaudeCodeModel)
 
 
 @pytest.mark.parametrize("key", ["../../company", "a/b", "a?x=1", "a#b", "", "a b", "%2e%2e", 1])

@@ -3,17 +3,33 @@
 The token is read here and sent only on this request. Nothing in this module logs it.
 """
 
+import asyncio
 import json
 import logging
 import os
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKError,
+    PermissionResultDeny,
+    ResultMessage,
+    TextBlock,
+    ToolUseBlock,
+    create_sdk_mcp_server,
+    query,
+)
+from claude_agent_sdk import tool as sdk_tool
 
 log = logging.getLogger(__name__)
 
-URL = "https://api.anthropic.com/v1/messages"
+SERVER = "accountable"
+PREFIX = f"mcp__{SERVER}__"
+TIMEOUT_SECONDS = 90
 DEFAULT_MODEL = "claude-sonnet-5-5"
 TOKEN_NAME = "CLAUDE_CODE_OAUTH_TOKEN"
 NEED_TOKEN = "The Copilot needs a token."
@@ -64,19 +80,24 @@ def using_stub() -> bool:
     return os.environ.get("ACCOUNTABLE_COPILOT") == "stub"
 
 
-class AnthropicModel:
-    """POST /v1/messages with the Claude Code token as a bearer, not an x-api-key."""
+class ClaudeCodeModel:
+    """One model step through the Claude Agent SDK, which runs Claude Code with the token.
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self._client = client
+    The tools are declared so the model can ask for them, and never run here: each call is
+    denied and returned to the loop, which runs it, or waits for Confirm.
+    """
 
     async def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str) -> Completion:
         if not token():
             raise ModelError(NEED_TOKEN)
-        if self._client is not None:
-            return await _post(self._client, messages, tools, system)
-        async with httpx.AsyncClient(timeout=30) as client:
-            return await _post(client, messages, tools, system)
+        try:
+            async with asyncio.timeout(TIMEOUT_SECONDS):
+                return await _run(messages, tools, system)
+        except ModelError:
+            raise
+        except (ClaudeSDKError, OSError, TimeoutError) as error:
+            log.warning("The Copilot's call through Claude Code failed: %s: %s", type(error).__name__, str(error)[:300])
+            raise ModelError(FAILURE) from None
 
 
 class MissingTokenModel:
@@ -93,60 +114,82 @@ class StubModel:
         return stub_reply(messages)
 
 
-def _headers() -> dict[str, str]:
-    return {
-        "authorization": f"Bearer {token()}",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-    }
-
-
-def _payload(messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str) -> dict[str, Any]:
-    return {"model": model_name(), "max_tokens": 1024, "system": system, "tools": tools, "messages": messages}
-
-
-async def _post(
-    client: httpx.AsyncClient, messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str
-) -> Completion:
-    try:
-        response = await client.post(URL, headers=_headers(), json=_payload(messages, tools, system))
-    except httpx.HTTPError as error:
-        log.warning("The Copilot's call to Anthropic failed: %s", type(error).__name__)
-        raise ModelError(FAILURE) from None
-    if response.status_code == 429:
-        raise ModelError(LIMIT)
-    if response.status_code >= 400:
-        log.warning("Anthropic refused the Copilot's call: %s %s", response.status_code, _error_type(response))
-        raise ModelError(FAILURE)
-    return _completion(response.json())
-
-
-def _error_type(response: httpx.Response) -> str:
-    """The error's type and message from Anthropic's reply. The reply never holds our token."""
-    try:
-        error = response.json().get("error", {})
-        return f"{error.get('type')}: {str(error.get('message'))[:200]}"
-    except (ValueError, AttributeError):
-        return "unreadable reply"
-
-
-def _completion(payload: object) -> Completion:
-    blocks = payload.get("content") if isinstance(payload, dict) else None
-    if not isinstance(blocks, list):
-        raise ModelError(FAILURE)
+async def _run(messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str) -> Completion:
+    declared = [_declared(spec) for spec in tools]
+    options = ClaudeAgentOptions(
+        system_prompt=system,
+        model=model_name(),
+        max_turns=1,
+        tools=[],
+        mcp_servers={SERVER: create_sdk_mcp_server(SERVER, tools=declared)},
+        can_use_tool=_deny,
+        setting_sources=[],
+        cwd=Path(tempfile.gettempdir()),
+    )
     text: list[str] = []
-    tools: list[ToolUse] = []
-    for block in blocks:
-        if not isinstance(block, dict):
+    uses: list[ToolUse] = []
+    failure: ModelError | None = None
+    try:
+        async for message in query(prompt=_transcript(messages), options=options):
+            if isinstance(message, AssistantMessage):
+                if message.error:
+                    log.warning("Claude Code reported an error for the Copilot's call: %s", message.error)
+                    raise ModelError(LIMIT if message.error == "rate_limit" else FAILURE)
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        text.append(block.text)
+                    elif isinstance(block, ToolUseBlock):
+                        uses.append(ToolUse(block.id, block.name.removeprefix(PREFIX), block.input))
+            elif isinstance(message, ResultMessage) and message.is_error:
+                log.warning(
+                    "Claude Code ended the Copilot's call with an error: %s %s",
+                    message.subtype,
+                    message.api_error_status,
+                )
+                failure = ModelError(LIMIT if message.api_error_status == 429 else FAILURE)
+    except ModelError:
+        raise
+    except ClaudeSDKError as error:
+        # A denied tool call ends the one turn, and the SDK raises for that after the call was read.
+        if not uses and not text:
+            raise
+        log.info("Claude Code ended the Copilot's step with %s after a reply", type(error).__name__)
+    # A tool call stops the run with an error result, so the error counts only when no call or text came first.
+    if failure and not uses and not text:
+        raise failure
+    return Completion("".join(text), uses)
+
+
+def _declared(spec: dict[str, Any]) -> Any:
+    async def never_runs(arguments: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": "This tool is run by the app, not here."}]}
+
+    return sdk_tool(spec["name"], spec["description"], spec["input_schema"])(never_runs)
+
+
+async def _deny(name: str, arguments: dict[str, Any], context: Any) -> PermissionResultDeny:
+    return PermissionResultDeny(message="The app runs tools after this step.", interrupt=True)
+
+
+def _transcript(messages: list[dict[str, Any]]) -> str:
+    """The conversation as text, with each tool call and its result, since the SDK takes one prompt."""
+    lines: list[str] = []
+    for message in messages:
+        who = "User" if message.get("role") == "user" else "Assistant"
+        content = message.get("content")
+        if isinstance(content, str):
+            lines.append(f"{who}: {content}")
             continue
-        if block.get("type") == "text":
-            text.append(str(block.get("text") or ""))
-        elif block.get("type") == "tool_use":
-            raw = block.get("input")
-            tools.append(
-                ToolUse(str(block.get("id") or ""), str(block.get("name") or ""), raw if isinstance(raw, dict) else {})
-            )
-    return Completion("".join(text), tools)
+        for block in content or []:
+            kind = block.get("type")
+            if kind == "text":
+                lines.append(f"{who}: {block.get('text', '')}")
+            elif kind == "tool_use":
+                lines.append(f"Assistant called {block.get('name')} with {json.dumps(block.get('input', {}))}")
+            elif kind == "tool_result":
+                lines.append(f"Tool result: {block.get('content', '')}")
+    lines.append("Answer the last user message, calling a tool if you need one.")
+    return "\n".join(lines)
 
 
 def stub_reply(messages: list[dict[str, Any]]) -> Completion:
