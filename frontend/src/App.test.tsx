@@ -549,6 +549,17 @@ describe("the app, signed in", () => {
     expect(window.location.pathname).toBe("/");
   });
 
+  it("opens the Import page at /import, inside the top bar, with no section marked", async () => {
+    mockApi({ "GET /meta": META, "GET /me": ALEX });
+    render(<App />);
+    visit("/import");
+    expect((await heading()).textContent).toBe("Import from HubSpot");
+    expect(window.location.pathname).toBe("/import");
+    expect(topBar().getAllByRole("link")).toHaveLength(9);
+    expect(topBar().queryByRole("link", { current: "page" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Choose file" })).toBeTruthy();
+  });
+
   it("opens the Company settings page at /settings, inside the top bar, with no section marked", async () => {
     mockApi({ "GET /meta": META, "GET /me": ALEX, "GET /settings": SETTINGS });
     render(<App />);

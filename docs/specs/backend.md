@@ -370,6 +370,7 @@ All routes are under `/api` and use JSON. Every route needs a valid token in the
 | `POST /products` | Add, active |
 | `GET /products/{id}` | One product |
 | `PATCH /products/{id}` | Edit the fields sent. `active` set to false archives the product, and set to true restores it. |
+| `POST /imports/companies`, `/imports/contacts` and `/imports/deals` | Body: `csv` and `save`. Read a HubSpot export and answer with the counts, the rejected rows and the ignored columns. With `save` true, add the new records in one transaction (I3, I17 to I22). |
 | `GET /search?q=` | Up to 5 organizations, contacts, deals and active products whose names hold `q`, with a count for each kind (K1 to K5). `q` is 1 to 100 characters once the spaces at its ends are gone. |
 | `GET /settings` | The company settings, with who last changed them and when (B9), the logo's type, width and height, or null with no logo, and `opening_balance_cents` and `opening_balance_on`, both null with no opening balance |
 | `PATCH /settings` | Change the settings sent. The checks apply to the settings as they'd be after the save (B5), so while no company name is saved, a save that leaves it out is refused. `logo` is the file's bytes in base64, or null to remove it, so the request stays JSON. `opening_balance_cents` is a whole number and `opening_balance_on` a `YYYY-MM-DD` date, and both null removes the opening balance (B23, B24) |

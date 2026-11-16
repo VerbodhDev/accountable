@@ -229,6 +229,17 @@ def test_the_routes_were_found():
     assert LOCAL_SIGN_IN == [("GET", "/api/local/teammates"), ("POST", "/api/local/sign-in")]
 
 
+def test_the_three_import_routes_are_writes_with_a_text_body_and_nothing_else_is_named_imports():
+    for kind in ("companies", "contacts", "deals"):
+        assert ("POST", f"/api/imports/{kind}") in WRITES
+        assert ("POST", f"/api/imports/{kind}", "csv") in BODY_TEXT
+    assert sorted(path for method, path in ROUTES if "/imports" in path) == [
+        "/api/imports/companies",
+        "/api/imports/contacts",
+        "/api/imports/deals",
+    ]
+
+
 def test_the_shared_app_has_every_route_but_the_local_sign_in(shared_app):
     assert routes(shared_app) == ROUTES
 

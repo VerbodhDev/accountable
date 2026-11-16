@@ -115,6 +115,9 @@ export function UserMenu({ groups }: { groups: MenuGroup[] }) {
           <DropdownMenu.Item onSelect={() => void navigate("/settings")} className={`mt-2.5 ${ITEM}`}>
             Company settings
           </DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={() => void navigate("/import")} className={ITEM}>
+            Import
+          </DropdownMenu.Item>
           <DropdownMenu.Item onSelect={signOutHere} className={ITEM}>
             Sign out
           </DropdownMenu.Item>

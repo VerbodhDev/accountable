@@ -48,6 +48,7 @@ test("the menu has Accounting with its four links, in order, between the themes 
   await expect(menu(page).getByRole("menuitem")).toHaveText([
     ...PAGES.map(({ label }) => label),
     "Company settings",
+    "Import",
     "Sign out",
   ]);
   await expect(menu(page).getByRole("group", { name: "Accounting" })).toBeVisible();

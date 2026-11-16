@@ -27,6 +27,7 @@ FIELD_MESSAGES = {
     "description": "Enter a description",
     "occurred_at": "Choose when it happened",
     "follow_up_date": "Enter a valid date",
+    "csv": "Choose a file",
 }
 
 
@@ -328,3 +329,46 @@ class Dashboard(BaseModel):
     funnel: list[FunnelStage]
     follow_ups: FollowUps
     recent: list[TimelineEntry]
+
+
+# Importing from HubSpot
+
+
+class ImportRequest(api.Request):
+    """A HubSpot file's text, and whether to save it. Without save it is a preview."""
+
+    csv: str
+    save: StrictBool = False
+
+
+class ImportCounts(BaseModel):
+    new: int
+    existing: int
+    rejected: int
+    companies_to_add: int
+    contacts_to_add: int
+
+
+class RejectedRow(BaseModel):
+    row: int
+    reason: str
+
+
+class ShownDeal(BaseModel):
+    """A new deal the preview lists: its stage, and its amount as written beside the whole dollars it becomes (I15, I24)."""
+
+    row: int
+    name: str
+    stage: str
+    value: int
+    amount: str
+    rounded: bool
+
+
+class ImportReply(BaseModel):
+    counts: ImportCounts
+    deals: list[ShownDeal]
+    rejected: list[RejectedRow]
+    rejected_more: int
+    ignored_columns: list[str]
+    saved: bool

@@ -74,7 +74,24 @@ function appCode() {
 
 describe("the layout rules", () => {
   it("find every area", () => {
-    expect(AREAS).toEqual(["aging", "bills", "books", "cashflow", "copilot", "crm", "invoices", "products", "quotes"]);
+    expect(AREAS).toEqual([
+      "aging",
+      "bills",
+      "books",
+      "cashflow",
+      "copilot",
+      "crm",
+      "imports",
+      "invoices",
+      "products",
+      "quotes",
+    ]);
+  });
+
+  it("keep the import page to components/ and lib/, with no other area", () => {
+    const targets = imported("imports/ImportPage.tsx").concat(imported("imports/queries.ts"));
+    expect(targets).toEqual(expect.arrayContaining(["components/PageHeader.tsx", "lib/api.ts"])); // Looking in the right place.
+    expect(targets.filter((target) => areaOf(target) !== undefined && areaOf(target) !== "imports")).toEqual([]);
   });
 
   it("read where each import leads", () => {

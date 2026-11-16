@@ -30,7 +30,7 @@ Accountable is a business management system: a sales CRM that will grow into a f
 | Invoices | What customers have been billed for won deals, what they've paid and what they still owe |
 | Bills | The bills the business receives from suppliers: what's unpaid, what's overdue and what's been paid |
 
-Around them, a search box in the top bar finds any organization, contact, deal or active product, a Copilot button opens a panel for a question or a request in plain English, and a menu under your initials holds the theme, the Accounting pages, Company settings and Sign out. Below the dashboard's own part, a Money section shows the cash flow first: the money in and out in each of the last 12 months and the cash balance at each month's end, carried on as a forecast for the next three from the open invoices and unpaid bills, with the likely deals on top if wanted. Under it, it puts what customers owe us beside what the business owes its suppliers. One side shows what customers owe, how late it is, and the payments received each month. The other shows what the business owes, what's overdue, the bills due in the next 30 days, and spending by category.
+Around them, a search box in the top bar finds any organization, contact, deal or active product, a Copilot button opens a panel for a question or a request in plain English, and a menu under your initials holds the theme, the Accounting pages, Company settings, Import and Sign out. Below the dashboard's own part, a Money section shows the cash flow first: the money in and out in each of the last 12 months and the cash balance at each month's end, carried on as a forecast for the next three from the open invoices and unpaid bills, with the likely deals on top if wanted. Under it, it puts what customers owe us beside what the business owes its suppliers. One side shows what customers owe, how late it is, and the payments received each month. The other shows what the business owes, what's overdue, the bills due in the next 30 days, and spending by category.
 
 **Ten kinds of record:**
 
@@ -86,7 +86,7 @@ Around them, a search box in the top bar finds any organization, contact, deal o
 - Forecasting bills that haven't arrived yet, such as next month's rent. The cash flow's forecast has only the bills already entered, so its later months show little money going out.
 - Tags or custom fields
 - Changing the pipeline stages
-- Importing, exporting or backing up data
+- Exporting or backing up data. Importing from HubSpot is the exception ([import.md](specs/import.md#import))
 - Undo, apart from restoring an archived product, and the Undo that marks a bill paid again just after it was marked unpaid
 
 ## Terms
@@ -214,6 +214,7 @@ Each area of the product has a file in `docs/specs/` with its requirements and, 
 | [sign-in.md](specs/sign-in.md) | Signing in and out, names and initials, who added and changed each record, the local copy's made-up teammates, and the sign-in screen | U1 to U16 |
 | [search.md](specs/search.md) | The top bar's search, and its screen | K1 to K8 |
 | [copilot.md](specs/copilot.md) | The Copilot panel: questions, tools, confirmation before a change, the Anthropic token, and its screen | Z1 to Z13 |
+| [import.md](specs/import.md) | Importing companies, contacts and deals from HubSpot CSV files: the columns, the matching, the preview and its screen | I1 to I28 |
 | [records.md](specs/records.md) | Organizations, contacts and deals: the tables, adding and editing, deleting, held records, the record pages and the panels other areas add to them, and their screens | T1 to T10, F1 to F12, D1 to D4, R1 to R7 |
 | [deals.md](specs/deals.md) | Stage changes, the pipeline board and its screen | S1 to S9, P1 to P11 |
 | [activities.md](specs/activities.md) | Activities, follow-ups and timelines | A1 to A7 |
