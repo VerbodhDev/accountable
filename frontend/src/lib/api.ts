@@ -75,10 +75,21 @@ function headersFor(token: string | null, body: unknown): Record<string, string>
   };
 }
 
+const CLOUD_HOST = "d3lzszqmcqjrkz.cloudfront.net";
+
+/**
+ * The CloudFront page is another site, so its calls go to the backend on this computer.
+ * Every other host, this computer's own pages and the shared app, uses a relative path,
+ * so a token never goes to an address the page was not built for.
+ */
+export function apiRoot(host = typeof location === "undefined" ? "" : location.host): string {
+  return host === CLOUD_HOST ? "http://127.0.0.1:8000" : "";
+}
+
 async function send(path: string, { method = "GET", body, signal }: Options): Promise<Response> {
   const token = await currentToken();
   try {
-    return await fetch(`/api${path}`, {
+    return await fetch(`${apiRoot()}/api${path}`, {
       method,
       signal,
       headers: headersFor(token, body),

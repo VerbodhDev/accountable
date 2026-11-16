@@ -74,7 +74,7 @@ function appCode() {
 
 describe("the layout rules", () => {
   it("find every area", () => {
-    expect(AREAS).toEqual(["aging", "bills", "books", "cashflow", "crm", "invoices", "products", "quotes"]);
+    expect(AREAS).toEqual(["aging", "bills", "books", "cashflow", "copilot", "crm", "invoices", "products", "quotes"]);
   });
 
   it("read where each import leads", () => {

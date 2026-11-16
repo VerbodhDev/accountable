@@ -12,9 +12,9 @@ A small business keeps track of its customers and sales in spreadsheets, inboxes
 
 Accountable is a business management system: a sales CRM that will grow into a full Business OS, including ERP. Today it's a complete sales CRM for a small team, shared on the web: a private Salesforce that does the everyday CRM essentials really well. Beyond the CRM, it holds the business's price list and the quotes made from it, each on its deal, which a customer's yes turns into a won deal. It bills customers for won deals: invoices made from the price list, or from an accepted quote at one click, the payments against them, and what's still owed. And it keeps the bills the business receives from suppliers, with what it owes and what it spends. From the money coming in and going out, it shows the business's cash month by month, and what it's likely to be over the next three months. Behind all of it, it keeps double-entry books: every event that moves money posts a journal entry, so the figures can be checked the way an accountant would, and an Accounting menu has the Journal, where every entry can be read and every account followed line by line, and the pages for the reports, all three of which are live: Profit and loss shows a year of revenue, expenses and profit and the statement for any month, quarter or year with the entries behind every figure, the Balance sheet shows what the business owns and what it owes on any day of the last 12 months, and that the two sides are equal ([balance-sheet.md](specs/balance-sheet.md#balance-sheet)), and Aged balances shows who owes the business money and whom it owes, and for how long, on any day up to today. It should feel sharp, modern and professional, and be a pleasure to use.
 
-**Who uses it:** a small sales team, sharing one Accountable every day with their own real data. Each person signs in with their own email and password, everyone works on the same records, and each record shows who added it. They start from the sample data to look around, then clear it and type in their own records. No other systems are involved yet.
+**Who uses it:** a small sales team, sharing one Accountable every day with their own real data. Each person signs in with their own email and password, everyone works on the same records, and each record shows who added it. They start from the sample data to look around, then clear it and type in their own records. The Copilot is the one outside system: a person can ask it a question in plain English, and it looks up and changes records only through Accountable's own API ([copilot.md](specs/copilot.md#copilot)).
 
-**Two ways to run it:** the **shared app** is the team's, on Render, with its data in Postgres on Supabase. The **local copy** runs on one computer with `npm run dev`, with the sample data and made-up teammates to sign in as, and needs neither Supabase nor the internet. It's where the app is built and tried out, and nothing done in it reaches the team's data. [running.md](specs/running.md) has both.
+**Two ways to run it:** the **shared app** is the team's, on Render, with its data in Postgres on Supabase. The **local copy** runs on one computer with `npm run dev`, with the sample data and made-up teammates to sign in as, and needs neither Supabase nor the internet for its records. A Copilot question is the one call that leaves the computer, and only when a token is set. It's where the app is built and tried out, and nothing done in it reaches the team's data. [running.md](specs/running.md) has both.
 
 **Nine sections:**
 
@@ -30,7 +30,7 @@ Accountable is a business management system: a sales CRM that will grow into a f
 | Invoices | What customers have been billed for won deals, what they've paid and what they still owe |
 | Bills | The bills the business receives from suppliers: what's unpaid, what's overdue and what's been paid |
 
-Around them, a search box in the top bar finds any organization, contact, deal or active product, and a menu under your initials holds the theme, the Accounting pages, Company settings and Sign out. Below the dashboard's own part, a Money section shows the cash flow first: the money in and out in each of the last 12 months and the cash balance at each month's end, carried on as a forecast for the next three from the open invoices and unpaid bills, with the likely deals on top if wanted. Under it, it puts what customers owe us beside what the business owes its suppliers. One side shows what customers owe, how late it is, and the payments received each month. The other shows what the business owes, what's overdue, the bills due in the next 30 days, and spending by category.
+Around them, a search box in the top bar finds any organization, contact, deal or active product, a Copilot button opens a panel for a question or a request in plain English, and a menu under your initials holds the theme, the Accounting pages, Company settings and Sign out. Below the dashboard's own part, a Money section shows the cash flow first: the money in and out in each of the last 12 months and the cash balance at each month's end, carried on as a forecast for the next three from the open invoices and unpaid bills, with the likely deals on top if wanted. Under it, it puts what customers owe us beside what the business owes its suppliers. One side shows what customers owe, how late it is, and the payments received each month. The other shows what the business owes, what's overdue, the bills due in the next 30 days, and spending by category.
 
 **Ten kinds of record:**
 
@@ -74,7 +74,7 @@ Around them, a search box in the top bar finds any organization, contact, deal o
 - Entering, editing or exporting journal entries, or changing the chart of accounts, which is fixed. The Journal, the ledgers and the Accounting panels only read the books.
 - Closing a year, tax returns, or claiming back the tax on bills. A bill's tax is part of its expense.
 - Personal settings. The theme belongs to the browser (L2), and the company settings to the team.
-- AI features
+- AI features other than the Copilot ([copilot.md](specs/copilot.md#copilot)). The Copilot does not delete records, change Settings or users, keep a conversation after a reload, take voice, or attach files.
 - Email, calendar or phone integrations
 - Currencies other than US dollars, or more than one tax rate on what the business sells. A bill's tax is entered as the supplier charged it.
 - Products on deals. Quotes and invoices have them, as lines.
@@ -100,6 +100,9 @@ Around them, a search box in the top bar finds any organization, contact, deal o
 | Initials | From the name, such as AR for Alex Rivera, or the email's first letter if there's no display name |
 | Added by, last changed by | The teammate who added a record, and the one whose save last changed it |
 | Theme | Light, Dark or System, chosen in the menu. System follows the device's setting. |
+| Copilot | The panel opened from the top bar. It answers a question, or makes a change, by calling Accountable's own API as the signed-in user ([copilot.md](specs/copilot.md#copilot)) |
+| Tool | One lookup or one change the Copilot makes through that API. The panel shows each tool in plain words as it uses it |
+| Confirmation | The wait before a change. The panel says what it is about to do, and nothing is written until the user confirms |
 | Mode | What's on screen, light or dark, set by the theme |
 | Today | The date in the team's time zone. The backend takes it from `TZ`, which `render.yaml` sets, or from the computer's own zone without it. The browser takes it from the device, which for the team is the same zone. |
 | Open deal | Stage is New, Qualified, Proposal or Negotiation |
@@ -210,6 +213,7 @@ Each area of the product has a file in `docs/specs/` with its requirements and, 
 | [shell.md](specs/shell.md) | The top bar, addresses, missing pages, the connection message, failed reads, the menu, the theme, and the shell's screen | N1 to N7, L1 to L5 |
 | [sign-in.md](specs/sign-in.md) | Signing in and out, names and initials, who added and changed each record, the local copy's made-up teammates, and the sign-in screen | U1 to U16 |
 | [search.md](specs/search.md) | The top bar's search, and its screen | K1 to K8 |
+| [copilot.md](specs/copilot.md) | The Copilot panel: questions, tools, confirmation before a change, the Anthropic token, and its screen | Z1 to Z13 |
 | [records.md](specs/records.md) | Organizations, contacts and deals: the tables, adding and editing, deleting, held records, the record pages and the panels other areas add to them, and their screens | T1 to T10, F1 to F12, D1 to D4, R1 to R7 |
 | [deals.md](specs/deals.md) | Stage changes, the pipeline board and its screen | S1 to S9, P1 to P11 |
 | [activities.md](specs/activities.md) | Activities, follow-ups and timelines | A1 to A7 |

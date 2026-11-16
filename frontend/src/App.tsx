@@ -12,6 +12,7 @@ import { Journal } from "./books/pages/Journal";
 import { LedgerPage } from "./books/pages/Ledger";
 import { ProfitAndLoss } from "./books/pages/ProfitAndLoss";
 import { CashFlowRow } from "./cashflow/CashFlowRow";
+import { Copilot } from "./copilot/Copilot";
 import { Bill } from "./bills/pages/Bill";
 import { Bills } from "./bills/pages/Bills";
 import { SettingsPage } from "./company/SettingsPage";
@@ -109,7 +110,14 @@ const MENU_LINKS = [ACCOUNTING_LINKS];
 
 function AppShell() {
   useMeta(); // Fetched early, because it never changes and forms need it straight away.
-  return <Shell sections={SECTIONS} search={<Search groups={SEARCH_GROUPS} />} menuLinks={MENU_LINKS} />;
+  return (
+    <Shell
+      sections={SECTIONS}
+      search={<Search groups={SEARCH_GROUPS} />}
+      copilot={<Copilot />}
+      menuLinks={MENU_LINKS}
+    />
+  );
 }
 
 const router = createBrowserRouter([

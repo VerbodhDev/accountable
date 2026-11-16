@@ -350,11 +350,23 @@ export async function startCopy(database: string, extra: Record<string, string> 
   }
   return {
     output,
-    stop: (signal = "SIGINT") => {
+    stop: async (signal = "SIGINT") => {
       child.kill(signal);
-      return exited;
+      const code = await exited;
+      // The servers can still be closing when the script has exited, and a restart on the same
+      // ports would then fail with "Port ... is in use".
+      await untilClosed(COPY_WEB_PORT);
+      await untilClosed(COPY_API_PORT);
+      return code;
     },
   };
+}
+
+async function untilClosed(port: number) {
+  const deadline = Date.now() + 10_000;
+  while ((await portIsOpen(port)) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }
 
 export function portIsOpen(port: number) {

@@ -5,6 +5,7 @@ description = "A sales CRM that runs on your own computer"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "claude-agent-sdk>=0.2.182",
     "fastapi>=0.162.0",
     "pillow>=13.0.0",
     "psycopg[binary]>=3.3.7",

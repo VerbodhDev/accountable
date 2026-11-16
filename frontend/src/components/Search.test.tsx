@@ -94,6 +94,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("the box", () => {
+  it("is 140px wide, so the Copilot button fits the top bar", () => {
+    const box = openSearch();
+    expect(box.parentElement?.className).toContain("w-[140px]");
+  });
+});
+
 describe("asking", () => {
   it("asks nothing until typing pauses for 150ms, then asks once for what's typed", async () => {
     const calls = mockApi({ "GET /search?q=harb": HARB });

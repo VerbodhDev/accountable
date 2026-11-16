@@ -6,6 +6,7 @@ import { existsSync, statSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const MIN_NODE_MAJOR = 24;
@@ -61,6 +62,49 @@ export function afterFailedInstall(hasNodeModules) {
 export function localEnv(env = process.env) {
   // Windows ignores case in these names, so database_url there is the same setting.
   return Object.fromEntries(Object.entries(env).filter(([name]) => !LEFT_OUT_LOCALLY.has(name.toUpperCase())));
+}
+
+/** The Copilot's token. It is not one of the shared app's settings, and a missing one does not stop the app. */
+export const COPILOT_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+
+/** The first non-blank of the shell, then the settings file. A blank shell value does not hide the file. */
+export function readOptional(shell, envFileText = "", name = COPILOT_TOKEN) {
+  const fromFile = parseEnv(envFileText);
+  const value = [shell[name], fromFile[name]].find((candidate) => candidate?.trim());
+  return value?.trim() ?? "";
+}
+
+function withoutName(env, name) {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() !== name.toUpperCase()));
+}
+
+export function withoutToken(env) {
+  return withoutName(env, COPILOT_TOKEN);
+}
+
+export function withToken(env, token) {
+  const rest = withoutToken(env);
+  return token ? { ...rest, [COPILOT_TOKEN]: token } : rest;
+}
+
+/** localEnv without the Copilot token or a stub left in the shell. Checks, seed and empty use this. */
+export function strippedLocalEnv(env = process.env) {
+  return withoutName(withoutToken(localEnv(env)), "ACCOUNTABLE_COPILOT");
+}
+
+/** The dev backend: the local environment plus the token, and never the test stub. */
+export function devBackendEnv(shell = process.env, envFileText = "") {
+  return withToken(strippedLocalEnv(shell), readOptional(shell, envFileText));
+}
+
+/** The dev frontend. Vite would copy a token in its environment into the page. */
+export function devWebEnv(shell = process.env) {
+  return strippedLocalEnv(shell);
+}
+
+/** One Playwright server: no token, and the stand-in in place of Anthropic. */
+export function testServerEnv(env = process.env) {
+  return { ...strippedLocalEnv(env), ACCOUNTABLE_COPILOT: "stub" };
 }
 
 // The API refuses anyone not signed in, /api/meta included, and its JSON refusal

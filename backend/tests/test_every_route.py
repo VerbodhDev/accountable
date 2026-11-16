@@ -25,6 +25,11 @@ SIGNED_OUT = {"detail": "Sign in to use Accountable."}
 TOO_BIG = MAX_ID + 1
 # What a website can send from a form or a plain fetch, with no permission asked first.
 SIMPLE_TYPES = ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data"]
+GRANTING_HEADERS = {
+    "access-control-allow-origin",
+    "access-control-allow-credentials",
+    "access-control-allow-private-network",
+}
 OPEN_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "https://evil.example", "null"]
 NOT_RECORDS = [b"{", b"", b"[]", b"null", b'"text"', b"12"]
 JSON = {"content-type": "application/json"}
@@ -317,6 +322,11 @@ def test_a_nul_character_is_refused_in_every_query(client, method, path, name):
     assert name in reply.json()["fields"]
 
 
+def grants(reply) -> list[str]:
+    """The headers that let another origin in. A refused preflight still lists the methods the one allowed origin may use, which lets nobody in."""
+    return [name for name in reply.headers if name.lower() in GRANTING_HEADERS]
+
+
 @pytest.fixture
 def a_logo(database) -> None:
     """So the logo's route has a file to send, as every other read has its reply."""
@@ -342,7 +352,7 @@ def test_no_route_agrees_to_a_cross_origin_request(client, method, path):
         target(method, path), headers={"origin": "http://localhost:3000", "access-control-request-method": method}
     )
     assert reply.status_code >= 400
-    assert not [name for name in reply.headers if name.lower().startswith("access-control-")]
+    assert not grants(reply)
 
 
 @pytest.mark.parametrize("method, path", ROUTES)
@@ -395,7 +405,7 @@ def test_the_local_sign_in_keeps_the_same_rules(local_app, method, path):
     )
     assert preflight.status_code >= 400
     reply = client.request(method, path, json={}, headers={"origin": "https://evil.example"})
-    assert not [name for name in [*reply.headers, *preflight.headers] if name.lower().startswith("access-control-")]
+    assert not grants(reply) and not grants(preflight)
     if method == "POST":
         sent_as_a_form = client.post(path, content='{"user_id": "x"}', headers={"content-type": "text/plain"})
         assert sent_as_a_form.status_code == 415

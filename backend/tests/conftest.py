@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import jwt
 import pytest
@@ -473,11 +473,12 @@ class Billing:
     @contextmanager
     def on(self, day: date) -> Generator[None]:
         """Today is this day for the requests inside, such as an issue."""
-        self.api.app.dependency_overrides[db.local_today] = lambda: day
+        app = cast(FastAPI, self.api.app)
+        app.dependency_overrides[db.local_today] = lambda: day
         try:
             yield
         finally:
-            self.api.app.dependency_overrides[db.local_today] = lambda: TODAY
+            app.dependency_overrides[db.local_today] = lambda: TODAY
 
     def draft(self, deal: int | None = None) -> dict[str, Any]:
         reply = self.api.post("/api/invoices", json={"deal_id": deal or self.deal})

@@ -43,7 +43,18 @@ def names(path: Path, area: str) -> bool:
 
 
 def test_the_areas_are_found():
-    assert AREAS == ["aging", "bills", "books", "cashflow", "company", "crm", "invoices", "products", "quotes"]
+    assert AREAS == [
+        "aging",
+        "bills",
+        "books",
+        "cashflow",
+        "company",
+        "copilot",
+        "crm",
+        "invoices",
+        "products",
+        "quotes",
+    ]
 
 
 def imported_areas(source: str) -> set[tuple[str, str]]:
@@ -222,6 +233,24 @@ def test_the_cash_flow_imports_no_area_but_company():
 def test_quotes_routes_start_with_quotes_alone():
     [quotes] = [area for area in APP_AREAS if any("quotes" in router.prefix for router in area.routers)]
     assert quotes.route_starts == {"quotes"}
+
+
+def test_the_copilot_imports_nothing_else_and_its_routes_start_with_copilot():
+    found = {
+        (area, module)
+        for path in sources()
+        if area_of(path) == "copilot"
+        for area, module in imported_areas(path.read_text())
+        if area != "copilot"
+    }
+    assert found == set()
+    [copilot] = [area for area in APP_AREAS if any(router.prefix == "/copilot" for router in area.routers)]
+    assert copilot.route_starts == {"copilot"}
+    assert copilot.kinds == ()
+    assert copilot.holds == ()
+    assert copilot.cash is None
+    assert copilot.numbered == ()
+    assert copilot.labels == {}
 
 
 def test_each_area_has_routes_of_its_own_words():
