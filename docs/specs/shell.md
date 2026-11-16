@@ -10,7 +10,7 @@ Part of the [spec](../spec.md), which has the summary, the terms, the quality ru
 - **N4.** Opening a record that no longer exists shows "This deal no longer exists" (or the matching word) with a link back to its section. So does an address that couldn't be a record, such as `/deals/abc`. An unknown address shows "This page no longer exists" with a link to the Dashboard, and keeps the top bar.
 - **N5.** If the backend can't be reached, the app says so, and it never shows a blank screen. In the local copy, it says to check that Accountable is still running. In the shared app, it says to check the internet connection.
 - **N6.** If a screen's data can't be read for any other reason, the screen says so and offers Try again. What's already showing stays, and a failed read never shows figures or an empty list as if they were real.
-- **N7.** A round button at the far right of the top bar shows the signed-in person's initials (U8) and opens the menu. The menu shows their name and email, the theme (L1), Accounting with its four pages ([J15](books.md#the-accounting-pages)), Company settings ([B2](settings.md#company-settings)) and Sign out (U5). Accounting is in the menu, not the top bar, so the bar keeps its nine sections.
+- **N7.** A round button at the far right of the top bar shows the signed-in person's initials (U8) and opens the menu. The menu shows their name and email, the theme (L1), Accounting with its four pages ([J15](books.md#the-accounting-pages)), Company settings ([B2](settings.md#company-settings)), Import ([I1](import.md#import)) and Sign out (U5). Accounting is in the menu, not the top bar, so the bar keeps its nine sections.
 
 ## Theme
 

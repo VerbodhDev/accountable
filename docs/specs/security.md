@@ -40,6 +40,7 @@ Part of the [spec](../spec.md), which has the summary, the terms, the quality ru
 ### Requests
 
 - The API accepts only JSON request bodies. The logo travels inside one, as base64 (B21), so no route reads a file upload.
+- An import file is untrusted text. It travels in a JSON body, is read in memory, is never stored, and is checked for size, row count, NUL characters and columns before any row is read (I17 to I20). A cell that starts with =, +, - or @ is kept as the text it is.
 - A request body over 2 MB is refused with a 413 and `{"detail": "That's too big to send."}`, so a large body can't use up the server's memory. The bytes are counted as they arrive, so a body sent without a `Content-Length` is refused too. The check comes after the token's and before the JSON check, so a body sent without a token is still refused for the token. The largest body the app sends is a 1 MB logo, about 1.4 MB as base64.
 - Website links must be `http` or `https`, so a saved value can't run a script when clicked.
 - A quote's PDF draws everything typed as plain text, never as markup or formatting (Q32), so a description or a name can't change what the PDF shows or does. The PDF is made by the backend from the saved quote, at the request of a signed-in person, and its route needs a token like every other.

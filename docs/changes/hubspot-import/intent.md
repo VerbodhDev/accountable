@@ -17,9 +17,9 @@ The user confirms, and the new records appear in Organizations, Contacts and Dea
 
 How HubSpot's words map to Accountable's:
 
-- **Companies:** a HubSpot company becomes an organization. Its industry, phone and city carry over where Accountable has a field for them.
+- **Companies:** a HubSpot company becomes an organization. Its industry carries over. Its phone, city and country go into the organization's Notes, because Accountable has no field for them.
 - **Contacts:** a HubSpot contact becomes a contact. The company named on it is found, or added if it is not there. Its lifecycle stage becomes the nearest status: lead, qualified or customer.
-- **Deals:** a HubSpot deal becomes a deal. Its stage becomes the nearest of Accountable's six stages: Appointment Scheduled is New, Qualified To Buy is Qualified, Presentation Scheduled is Proposal, Decision Maker Bought-In and Contract Sent are Negotiation, Closed Won is Won, and Closed Lost is Lost. A deal needs an organization and a main contact. HubSpot's default deal export holds neither, so the file must carry HubSpot's association columns. A deal row without them is rejected with that reason.
+- **Deals:** a HubSpot deal becomes a deal. Its stage becomes the nearest of Accountable's six stages: Appointment Scheduled is New, Qualified To Buy is Qualified, Presentation Scheduled is Proposal, Decision Maker Bought-In and Contract Sent are Negotiation, Closed Won is Won, and Closed Lost is Lost. A deal needs an organization and a main contact. HubSpot's default deal export holds neither, so the file must carry HubSpot's association columns, and a file without them is refused with a message that says how to export it. A company or contact that a deal names and Accountable lacks is added with the deal.
 
 A record that already exists is skipped and counted, so importing the same file twice adds nothing the second time. Companies match by name. Contacts match by email, or by name within their company when there is no email.
 
@@ -59,8 +59,8 @@ A record that already exists is skipped and counted, so importing the same file 
 1. npm run check passes.
 2. Importing a companies file shows a preview with the counts, then adds the new organizations, and Organizations lists them.
 3. Importing a contacts file adds the contacts on their companies, and adds a company that was missing. Statuses follow the mapping.
-4. Importing a deals file that has association columns adds the deals on the board in the mapped stages, each with its organization and main contact. A deal row without them is rejected with the reason.
+4. Importing a deals file that has association columns adds the deals on the board in the mapped stages, each with its organization and main contact, and adds any company or contact it names that was missing.
 5. Importing the same file a second time adds nothing, and the preview says every row exists.
 6. A file that is the wrong type, over 2 MB, over 2,000 rows, holds a NUL character or lacks the expected columns is refused with a plain message, and nothing is saved. A cell that starts with = is stored as text.
 7. A signed-out request to the import API gets 401.
-8. The three real sample files in docs/ preview without error, apart from the deal rows, which are rejected for the missing associations.
+8. The real sample files in docs/ preview without error: the companies and contacts files as they are, and the deals file when it holds the association columns. The default deals file, which has none, is refused with a message that says how to export it.
