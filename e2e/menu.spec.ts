@@ -81,7 +81,7 @@ async function switchBothWays(page: Page) {
   await expectMode(page, "light");
 }
 
-test("the menu shows the initials, the name and email, the themes, Company settings and Sign out", async ({
+test("the menu shows the initials, the name and email, the themes, Company settings, Import and Sign out", async ({
   page,
   request,
 }) => {
@@ -109,6 +109,7 @@ test("the menu shows the initials, the name and email, the themes, Company setti
     "Journal",
     "Aged balances",
     "Company settings",
+    "Import",
     "Sign out",
   ]);
 

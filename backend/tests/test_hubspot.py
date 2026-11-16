@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from accountable.crm import hubspot
 from accountable.crm.hubspot import Refused
-from hubspot_files import DEALS_DEFAULT_HEADER, companies, company, csv_text, deal
+from hubspot_files import DEALS_DEFAULT_HEADER, companies, company, contact, contacts, csv_text, deal
 
 TODAY = date(2026, 10, 31)
 
@@ -86,6 +86,11 @@ def test_a_header_only_file_has_no_rows():
 )
 def test_a_file_without_a_needed_column_is_refused_with_the_names(kind, text, message):
     assert refusal(kind, text) == message
+
+
+def test_a_contacts_file_chosen_as_companies_is_refused_whatever_columns_it_shares():
+    text = contacts(contact("Asha", "Reed", "Marigold Kitchens"))
+    assert refusal("companies", text) == hubspot.LOOKS_LIKE_CONTACTS
 
 
 def test_a_deal_file_without_associations_is_refused_with_how_to_export_it():

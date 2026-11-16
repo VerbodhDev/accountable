@@ -430,3 +430,13 @@ def test_the_default_deal_export_is_refused_with_how_to_export_it(api):
     message = reply.json()["fields"]["csv"]
     assert message.startswith("This is not a HubSpot deals file.")
     assert "All properties and all associations on records" in message
+
+
+def test_a_contacts_file_sent_as_companies_is_refused_and_adds_nothing(api):
+    text = contacts(contact("Asha", "Reed", "Marigold Kitchens", Email="asha@marigold.example"))
+    reply = post(api, "companies", text, save=True)
+    assert reply.status_code == 422
+    assert (
+        reply.json()["fields"]["csv"] == "This looks like a contacts file, not a companies file. Choose Contacts above."
+    )
+    assert count(organizations) == 0

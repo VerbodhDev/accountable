@@ -80,17 +80,17 @@ describe("the menu button", () => {
     expect((await menuButton()).textContent).toBe("AR");
   });
 
-  it("still opens the menu, with the themes, Company settings and Sign out, when the backend can't say who's signed in", async () => {
+  it("still opens the menu, with the themes, Company settings, Import and Sign out, when the backend can't say who's signed in", async () => {
     mockApi({});
     openMenuAt();
     await user().click(screen.getByRole("button", { name: "Menu" }));
     expect(themes()).toEqual(["Light (checked)", "Dark", "System"]);
-    expect(items()).toEqual([...ACCOUNTING, "Company settings", "Sign out"]);
+    expect(items()).toEqual([...ACCOUNTING, "Company settings", "Import", "Sign out"]);
   });
 });
 
 describe("the menu", () => {
-  it("shows the name and email, the three themes with a check by the current one, Company settings and Sign out", async () => {
+  it("shows the name and email, the three themes with a check by the current one, Company settings, Import and Sign out", async () => {
     mockApi({ "GET /me": ALEX });
     openMenuAt();
     await user().click(await menuButton());
@@ -100,7 +100,7 @@ describe("the menu", () => {
     expect(menu().getByText("Theme")).toBeTruthy();
     expect(within(menu().getByRole("group", { name: "Theme" })).getAllByRole("menuitemradio")).toHaveLength(3);
     expect(themes()).toEqual(["Light (checked)", "Dark", "System"]);
-    expect(items()).toEqual([...ACCOUNTING, "Company settings", "Sign out"]);
+    expect(items()).toEqual([...ACCOUNTING, "Company settings", "Import", "Sign out"]);
   });
 
   it("shows the email once for someone with no display name", async () => {
@@ -189,6 +189,19 @@ describe("the menu", () => {
     await clicks.click(menu().getByRole("menuitem", { name: "Company settings" }));
 
     expect(await screen.findByText("At /settings, signed-in")).toBeTruthy();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("opens the Import page and closes", async () => {
+    startSignedIn();
+    mockApi({ "GET /me": ALEX });
+    openMenuAt("/deals/7");
+    const clicks = user();
+    await clicks.click(await screen.findByRole("button", { name: "Menu for Alex Rivera" }));
+
+    await clicks.click(menu().getByRole("menuitem", { name: "Import" }));
+
+    expect(await screen.findByText("At /import, signed-in")).toBeTruthy();
     expect(screen.queryByRole("menu")).toBeNull();
   });
 

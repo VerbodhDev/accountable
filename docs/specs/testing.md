@@ -196,6 +196,7 @@ Every test runs as the local copy, on SQLite. The checks never read `.env`, and 
 | Search | K1 to K8 | `e2e/search.spec.ts`, `backend/tests/test_search.py`, `frontend/src/components/Search.test.tsx` |
 | Products | G1 to G12 | `e2e/products.spec.ts`, `backend/tests/test_products.py`, the tests in `frontend/src/products/` and `frontend/src/lib/money.test.ts` |
 | Company settings | B1 to B14 | `e2e/settings.spec.ts`, `backend/tests/test_company_settings.py`, `frontend/src/company/SettingsPage.test.tsx`, `frontend/src/company/settings.test.ts` |
+| Import from HubSpot | I1 to I28, N7 | `e2e/import.spec.ts`, `e2e/menu.spec.ts`, `backend/tests/test_hubspot.py`, `backend/tests/test_import.py`, `backend/tests/test_import_limits.py`, `backend/tests/hubspot_files.py` (made-up files in HubSpot's shapes), `frontend/src/imports/ImportPage.test.tsx` |
 | Numbers and sums for quotes and invoices | B15 to B17, C4 | `backend/tests/test_numbers.py`, `backend/tests/test_tax.py`, `backend/tests/test_cli.py`, `frontend/src/company/tax.test.ts` |
 | Invoices from quotes | V33 to V38, Q38, M3 | `e2e/quote-to-invoice.spec.ts`, `backend/tests/test_quote_invoice.py`, `backend/tests/test_sample_data.py`, the tests in `frontend/src/quotes/` and `frontend/src/invoices/` |
 | Quotes | Q5 to Q37, M8 | `e2e/quotes.spec.ts`, `backend/tests/test_quotes.py`, `backend/tests/test_quote_pdf.py`, the tests in `frontend/src/quotes/` |

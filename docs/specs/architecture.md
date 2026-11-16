@@ -121,8 +121,10 @@ backend/accountable/
     timeline.py                   merged timelines and last-activity queries
     search.py                     what the top bar's search looks for in the CRM: organizations, contacts and deals
     cash.py                       the open deals as the cash flow's likely deals (Y13)
+    hubspot.py                    reading a HubSpot CSV: its columns, its limits, and the maps from HubSpot's deal and lifecycle stages (I6 to I19), with no database
+    importer.py                   judges each row against what is there and adds the new records through this area's schemas and rules (I3, I4, I7, I22)
     sample_data.py                sample records, dated from a given day
-    routers/                      meta, organizations, contacts, deals, activities, dashboard
+    routers/                      meta, organizations, contacts, deals, activities, dashboard, imports
   products/                       the price list (G1 to G12), which never imports crm/
     tables.py                     the products table, and RECORDS
     schemas.py                    its request and reply models, and the messages for its fields
@@ -244,6 +246,7 @@ frontend/src/
     board/                        Board, Column, DealCard
     charts/                       RevenueChart, DealsWonChart, SalesFunnel, PipelineBand, and their geometry
     pages/                        one file per screen
+  imports/                        the Import page (I23 to I28) and its queries, which imports only components/ and lib/
   products/                       the price list, which never imports crm/
     queries.ts, ProductForm.tsx, searchGroups.tsx
     pages/                        Products and Product

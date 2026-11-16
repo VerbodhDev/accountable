@@ -22,6 +22,7 @@ TOO_MANY_COLUMNS = "This file has too many columns. A HubSpot export has fewer t
 NOT_TEXT = "This is not a text file. Export it from HubSpot as a CSV file."
 UNREADABLE = "This file could not be read as CSV."
 EMPTY = "This file is empty."
+LOOKS_LIKE_CONTACTS = "This looks like a contacts file, not a companies file. Choose Contacts above."
 DEAL_HINT = (
     "To export deals, open Customize in HubSpot's Export window, and under Properties included in export "
     "choose All properties and all associations on records."
@@ -146,6 +147,9 @@ def _columns(kind: str, header: list[str]) -> dict[str, int]:
     missing = [name for name in NEEDED[kind] if name.casefold() not in found]
     if missing:
         raise Refused(_missing_message(kind, missing))
+    # A contacts file has a Company Name column too, so it would pass for companies without this.
+    if kind == "companies" and {"first name", "last name"} <= found.keys():
+        raise Refused(LOOKS_LIKE_CONTACTS)
     return {name: found[name.casefold()] for name in [*NEEDED[kind], *ALSO[kind]] if name.casefold() in found}
 
 

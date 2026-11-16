@@ -16,6 +16,7 @@ import { Copilot } from "./copilot/Copilot";
 import { Bill } from "./bills/pages/Bill";
 import { Bills } from "./bills/pages/Bills";
 import { SettingsPage } from "./company/SettingsPage";
+import { ImportPage } from "./imports/ImportPage";
 import { Icon } from "./components/Icon";
 import { MissingRecord } from "./components/MissingRecord";
 import { MoneySection } from "./components/MoneySection";
@@ -148,6 +149,7 @@ const router = createBrowserRouter([
       { path: "/accounting/aged-balances", element: <AgedBalances /> },
       { path: "/accounting/accounts/:key", element: <LedgerPage /> },
       { path: "/settings", element: <SettingsPage preview={SampleInvoice} /> },
+      { path: "/import", element: <ImportPage /> },
       { path: "*", element: <MissingRecord word="page" to="/" section="Dashboard" /> },
     ],
   },

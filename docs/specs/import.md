@@ -20,7 +20,7 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | Contacts | First Name, Last Name, Company Name | Email, Phone Number, Lifecycle Stage |
 | Deals | Deal Name, Deal Stage, Amount, Close Date, Associated Company (Primary), Associated Contact, Number of Associated Contacts | |
 
-- **I6.** A file that lacks a needed column is refused as a whole, with a message that names the missing columns, such as "This is not a HubSpot companies file. It has no Company name column." Nothing is previewed. For a deal file the message adds how to export it: in HubSpot's Export window, open Customize, and under Properties included in export choose All properties and all associations on records. HubSpot's default deal export holds no association columns.
+- **I6.** A file that lacks a needed column is refused as a whole, with a message that names the missing columns, such as "This is not a HubSpot companies file. It has no Company name column." Nothing is previewed. For a deal file the message adds how to export it: in HubSpot's Export window, open Customize, and under Properties included in export choose All properties and all associations on records. HubSpot's default deal export holds no association columns. A contacts file also has a Company Name column, so a file with First Name and Last Name columns, sent as companies, is refused with "This looks like a contacts file, not a companies file. Choose Contacts above."
 
 ## Matching what is already there
 
@@ -62,9 +62,11 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | Close Date is blank or not a date | No close date, or Close Date is not a date |
 | A Won or Lost deal's close date is in the future ([F7](records.md#adding-and-editing)) | A won or lost deal can't close in the future |
 | Associated Company (Primary) is blank | No company |
+| Number of Associated Contacts is not a number | Number of Associated Contacts is not a number |
 | Number of Associated Contacts is 0 | No contact |
 | Number of Associated Contacts is more than 1 | More than one contact. Accountable keeps one main contact. |
 | Associated Contact holds no email | The contact has no email, so it cannot be matched |
+| Associated Contact holds an email but no name | The contact has no name |
 
 - **I14.** Deal Stage becomes the stage. HubSpot's default sales pipeline has seven stages, from its documentation. Labels are compared ignoring case. The pipeline's own name is not checked, because the export of a real account named it "Deals pipeline".
 
@@ -83,7 +85,7 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 
 ## Limits and safety
 
-- **I17.** A file holds at most 2 MB and 2,000 rows, not counting the header row. Blank rows are ignored. A larger file is refused whole, with "This file is too large. Split it into files of 2,000 rows or fewer." The page checks the size before it reads the file. The backend checks both again, because a request can skip the page.
+- **I17.** A file holds at most 2 MB, 2,000 rows not counting the header row, and 400 columns. A single cell can hold at most 131,072 characters, which is the CSV reader's own limit, and a file with a longer cell is refused as unreadable. Blank rows are ignored. A larger file is refused whole, with "This file is too large. Split it into files of 2,000 rows or fewer." The page checks the size before it reads the file. The backend checks both again, because a request can skip the page.
 - **I18.** The page sends the file's text in a JSON body, because the API takes no file upload ([Security](security.md#requests)). Escaping can make the text larger, so a file near 2 MB may pass the page's check and still meet the backend's 2 MB body limit, which answers 413. The page then shows the message of I17.
 - **I19.** The file is untrusted. The backend refuses text that holds a NUL character, a file that is not text, and a file whose header row it cannot read, each with a plain message and no 500. A cell is data and nothing else. One that starts with =, +, - or @ is stored as the text it is, and shown as text. Names and other fields follow the limits and checks of the forms.
 - **I20.** The file is read in memory and never written to disk or kept. The preview and the save each read the text again. The save never trusts a count or a row list from the preview, so a request cannot ask for more than the file holds. A log line names the kind, the counts and the person, and never a row's content.
@@ -98,7 +100,7 @@ HubSpot's export dialog has a Customize section. These columns were seen in real
 | `POST /imports/contacts` | The same body. |
 | `POST /imports/deals` | The same body. |
 
-Every reply has `counts` (`new`, `existing`, `rejected`, for contacts `companies_to_add`, and for deals `companies_to_add` and `contacts_to_add`), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `fields` holding the message under `csv`, like every other refused request. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
+Every reply has `counts` (`new`, `existing`, `rejected`, `companies_to_add` and `contacts_to_add`, the last two zero where a kind adds none), `rejected` (up to 100 rows, each with its row number and reason, the header being row 1), `rejected_more` (how many more there are), `ignored_columns`, and `saved` (false for a preview, true after a save). A refused file returns 422 with `fields` holding the message under `csv`, like every other refused request. Row numbers count the header as row 1, so the first record is row 2, as in a spreadsheet.
 
 ## The screen
 
@@ -109,4 +111,4 @@ The Import page has the page title "Import from HubSpot", and one panel under it
 - **I25.** The primary button reads "Import 12 new companies", with the number and the kind. It is off when nothing is new. Beside it, Choose another file clears the preview. While a file is being read the panel says "Reading the file". While it saves, the button is quiet and says "Importing".
 - **I26.** After a save the panel says what was added, such as "Added 12 organizations. 3 were already there.", and links to the list it filled: Organizations, Contacts or Deals. The preview is gone, so the same click cannot save twice ([F10](records.md#adding-and-editing)).
 - **I27.** A refused file shows its message in place of the preview, in the error style the forms use. A request that fails to arrive says so, keeps the file chosen, and offers to try again. The page works by keyboard, shows a focus ring, and uses no animation beyond the app's own.
-- **I28.** Opening Import with no file chosen shows step 1 and step 2 only. Changing the kind clears the preview, so a preview never sits beside the wrong choice.
+- **I28.** Opening Import with no file chosen shows step 1 and step 2 only. Changing the kind clears the preview and previews the chosen file again as the new kind, so a preview never sits beside the wrong choice.
