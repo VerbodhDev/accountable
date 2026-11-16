@@ -149,9 +149,6 @@ test.describe("a copy of the app of its own", () => {
       } finally {
         await first.stop();
       }
-      // The first copy's servers may still be closing. Starting on their ports now fails with "Port ... is in use".
-      await expect.poll(() => portIsOpen(COPY_WEB_PORT)).toBe(false);
-      await expect.poll(() => portIsOpen(COPY_API_PORT)).toBe(false);
 
       const deadPort = "http://127.0.0.1:9";
       const copy = await startCopy(folder.database, {
